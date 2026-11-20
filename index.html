@@ -43,8 +43,35 @@ html,body{height:100%;overflow:hidden}body{height:100dvh}.calc{height:100dvh;min
 
 .key.shifted .secondary { font-size: clamp(12px, 3.6vw, 19px); }
 .key.shifted .primary { display: none; }
+
+.screen .result[data-format="coordinates"] { font-size: clamp(16px, 4.6vw, 23px); }
+.calculator-panel { width: min(92vw, 420px); max-height: 85dvh; overflow: auto; color: #18251e; background: #dce8d5; border: 3px solid #28352d; border-radius: 10px; }
+.calculator-panel::backdrop { background: #111a; }
+.calculator-panel h2 { margin: 0 0 .55em; font-size: 1.15rem; }
+.calculator-panel label { display: block; margin-bottom: .4em; }
+.calculator-panel button, .calculator-panel textarea { font: inherit; padding: .5em; }
+.calculator-panel textarea { box-sizing: border-box; width: 100%; }
+.calculator-panel output { display: block; white-space: pre-line; line-height: 1.55; margin: .6em 0; }
+#constant-list { display: grid; gap: .35em; margin: 0 0 .7em; }
+#constant-list button { text-align: left; }
 @media(max-height:650px){.sub,.footer{display:none}.screen{flex-basis:14dvh}.calc{gap:2px}}
-</style></head><body><main class="calc"><div><div class="brand">CASIO <span style="float:right;font-size:12px">KS EDITION</span></div><div class="sub">fx-375ESA · NATURAL-V.P.A.M. inspired</div></div><div class="screen"><div class="status" id="status">DEG · COMP</div><div class="expression" id="expr"></div><div class="result" id="result">0</div></div><div class="history" id="history"></div><div class="top" id="top"></div><div class="keys"><div class="key-group function-keys" id="function-keys" role="group" aria-label="関数キー"></div><div class="key-group number-pad" id="number-pad" role="group" aria-label="テンキー"></div></div><div class="footer">v0.1.5 · 1画面表示 · オフライン対応 · 計算結果は近似値の場合があります</div></main><script>
+</style></head><body><main class="calc"><div><div class="brand">CASIO <span style="float:right;font-size:12px">KS EDITION</span></div><div class="sub">fx-375ESA · NATURAL-V.P.A.M. inspired</div></div><div class="screen"><div class="status" id="status">DEG · COMP</div><div class="expression" id="expr"></div><div class="result" id="result">0</div></div><div class="history" id="history"></div><div class="top" id="top"></div><div class="keys"><div class="key-group function-keys" id="function-keys" role="group" aria-label="関数キー"></div><div class="key-group number-pad" id="number-pad" role="group" aria-label="テンキー"></div></div><div class="footer">v0.1.6 · 1画面表示 · オフライン対応 · 計算結果は近似値の場合があります</div></main>
+<dialog id="statistics-panel" class="calculator-panel" aria-labelledby="statistics-title">
+  <h2 id="statistics-title">STAT · 1変数統計</h2>
+  <form id="statistics-form">
+    <label for="statistics-input">数値を空白・改行・カンマで区切って入力</label>
+    <textarea id="statistics-input" rows="3" placeholder="10, 12, 14" spellcheck="false"></textarea>
+    <button type="submit">集計</button>
+    <output id="statistics-result" aria-live="polite"></output>
+  </form>
+  <form method="dialog"><button>閉じる</button></form>
+</dialog>
+<dialog id="constants-panel" class="calculator-panel" aria-labelledby="constants-title">
+  <h2 id="constants-title">CONST · 物理定数</h2>
+  <div id="constant-list"></div>
+  <form method="dialog"><button>閉じる</button></form>
+</dialog>
+<script src="./arithmetic.js"></script><script>
 const functionRows = [
   [['CALC', 'SOLVE'], ['∫', 'd/dx'], null, null, ['x⁻¹', 'x!'], ['logₐ', 'Σ']],
   [['a/b', 'a b/c'], ['√', '³√'], ['x²', 'x³'], ['xʸ', 'ʸ√x'], ['log', '10ˣ'], ['ln', 'eˣ']],
@@ -64,8 +91,133 @@ let resultFormat = 'decimal';
 let engineeringExponent = 0;
 const keyLabels = [];
 const trigKeys = new Set(['sin', 'cos', 'tan']);
-const supportedShift = new Set(['MODE', 'AC', 'x⁻¹', '√', 'x²', 'log', 'ln', 'hyp', 'sin', 'cos', 'tan', 'RCL', 'ENG', '(', 'S⇔D', 'M+', '.', '×10ˣ', 'Ans']);
+const supportedShift = new Set(['MODE', 'AC', 'x⁻¹', '√', 'x²', 'log', 'ln', 'hyp', 'sin', 'cos', 'tan', 'RCL', 'ENG', '(', 'S⇔D', 'M+', '.', '×10ˣ', 'Ans', '0', '1', '2', '3', '+', '−', '×', '÷', ')', '7']);
 let inputState = 'editing';
+const bases = {DEC: 10, HEX: 16, BIN: 2, OCT: 8};
+const baseSelectors = {'x²': 'DEC', 'xʸ': 'HEX', log: 'BIN', ln: 'OCT'};
+const hexKeys = {'(−)': 'A', '°′″': 'B', hyp: 'C', sin: 'D', cos: 'E', tan: 'F'};
+const physicalConstants = [
+  ['c', '真空中の光速', 299792458, 'm/s'],
+  ['G', '万有引力定数', 6.67430e-11, 'm³/(kg·s²)'],
+  ['g', '標準重力加速度', 9.80665, 'm/s²'],
+  ['h', 'プランク定数', 6.62607015e-34, 'J·s'],
+  ['qe', '電気素量', 1.602176634e-19, 'C'],
+  ['k', 'ボルツマン定数', 1.380649e-23, 'J/K'],
+  ['NA', 'アボガドロ定数', 6.02214076e23, 'mol⁻¹'],
+];
+const constants = Object.fromEntries([['π', Math.PI], ...physicalConstants.map(([symbol, , value]) => [symbol, value])]);
+let mode = 'COMP';
+let baseName = 'DEC';
+let setupPage = '';
+let fixDigits = null;
+try {
+  const preference = localStorage.getItem('kscalc-fix-digits');
+  if (/^[0-9]$/.test(preference)) fixDigits = Number(preference);
+} catch {}
+
+function roundedText(value, digits) {
+  return value.toLocaleString('en-US', {
+    useGrouping: false, minimumFractionDigits: digits, maximumFractionDigits: digits,
+  });
+}
+function roundNumber(value) {
+  return fixDigits === null ? Number(value.toPrecision(10)) : Number(roundedText(value, fixDigits));
+}
+function formatAnswer(value) {
+  if (typeof value === 'bigint') {
+    return value.toString(bases[baseName]).toUpperCase().replace('-', '−');
+  }
+  if (typeof value !== 'object') return decimalText(value);
+  const imaginary = value.im < 0 ? '−' : '+';
+  const coefficient = Math.abs(value.im);
+  const term = coefficient === 1 && fixDigits === null ? 'i' : decimalText(coefficient) + 'i';
+  if (value.im === 0) return decimalText(value.re);
+  if (value.re === 0) return (value.im < 0 ? '−' : '') + term;
+  return `${decimalText(value.re)} ${imaginary} ${term}`;
+}
+function setMode(next) {
+  if (mode === next) next = 'COMP';
+  mode = next;
+  baseName = 'DEC';
+  ans = mode === 'BASE' ? 0n : 0;
+  startEditing('');
+  render();
+}
+function changeBase(next) {
+  if (next === baseName) return;
+  if (inputState === 'error') startEditing('');
+  if (inputState === 'editing' && expr) calculate();
+  if (inputState === 'error') return;
+  baseName = next;
+  if (inputState === 'answer') {
+    expr = '';
+    resultDisplay('decimal', formatAnswer(ans));
+  }
+  render();
+}
+function pressBase(key) {
+  if (Object.hasOwn(baseSelectors, key)) changeBase(baseSelectors[key]);
+  else if (Object.hasOwn(hexKeys, key) && baseName === 'HEX') append(hexKeys[key]);
+  else if (key === '=') calculate();
+  else if (key === 'DEL') deleteLast();
+  else if (key === 'AC') startEditing('');
+  else if (key === 'Ans') append('Ans');
+  else if (/^[0-9]$/.test(key) && Number(key) < bases[baseName]) append(key);
+  else if (key === '(−)' && baseName !== 'HEX') append('−');
+  else if (['+', '−', '×', '÷', '(', ')'].includes(key)) append(key, answerContinuationKeys.has(key));
+  render();
+}
+function pressSetup(key) {
+  if (key === 'AC' || key === 'MODE' || key === 'ON') setupPage = '';
+  else if (setupPage === 'menu' && key === '6') setupPage = 'fix';
+  else if ((setupPage === 'menu' && key === '0') || (setupPage === 'fix' && /^[0-9]$/.test(key))) {
+    fixDigits = setupPage === 'fix' ? Number(key) : null;
+    try {
+      if (fixDigits === null) localStorage.removeItem('kscalc-fix-digits');
+      else localStorage.setItem('kscalc-fix-digits', String(fixDigits));
+    } catch {}
+    setupPage = '';
+    if (inputState === 'answer' && resultFormat === 'decimal') resultDisplay('decimal', formatAnswer(ans));
+  }
+  render();
+}
+function initializePanels() {
+  const list = $('constant-list');
+  for (const [symbol, label, value, unit] of physicalConstants) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = `${symbol}  ${label}  ·  ${value} ${unit}`;
+    button.addEventListener('click', () => {
+      $('constants-panel').close();
+      append(symbol);
+    });
+    list.append(button);
+  }
+  $('statistics-form').addEventListener('submit', event => {
+    event.preventDefault();
+    const input = $('statistics-input').value.trim();
+    const output = $('statistics-result');
+    const parts = input.split(/[\s,、]+/).filter(Boolean);
+    const values = parts.map(part => Number(part.replace('−', '-')));
+    if (!parts.length || parts.some(part => !/^[+−-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(part)) ||
+        values.some(value => !Number.isFinite(value))) {
+      output.textContent = '数値を空白・改行・カンマで区切って入力してください。';
+      return;
+    }
+    const scale = values.reduce((max, value) => Math.max(max, Math.abs(value)), 0) || 1;
+    const scaled = values.map(value => value / scale);
+    const total = scaled.reduce((sum, value) => sum + value, 0);
+    const mean = total / values.length;
+    const squares = scaled.reduce((sum, value) => sum + (value - mean) ** 2, 0);
+    const population = Math.sqrt(squares / values.length) * scale;
+    const sample = values.length > 1 ? decimalText(Math.sqrt(squares / (values.length - 1)) * scale) : '—';
+    output.textContent = [
+      `件数  ${values.length}`, `合計  ${decimalText(total * scale)}`,
+      `平均  ${decimalText(mean * scale)}`, `母標準偏差 σ  ${decimalText(population)}`,
+      `標本標準偏差 s  ${sample}`,
+    ].join('\n');
+  });
+}
 function buildKeys(parent, rows) {
   rows.forEach((row, rowIndex) => {
     row.forEach((entry, columnIndex) => {
@@ -98,13 +250,15 @@ buildKeys($('top'), [topKeys]);
 buildKeys($('function-keys'), functionRows);
 buildKeys($('number-pad'), numberRows);
 function render() {
-  $('expr').textContent = expr;
-  $('status').textContent = `${shift ? 'SHIFT · ' : ''}${alpha ? 'ALPHA · ' : ''}${hyperbolic ? 'HYP · ' : ''}${degree ? 'DEG' : 'RAD'} · COMP`;
+  $('expr').textContent = setupPage === 'menu' ? '6 Fix · 0 Norm' : setupPage === 'fix' ? '小数点以下の桁数  0–9' : expr;
+  $('status').textContent = setupPage ? 'SETUP · ACで戻る' : `${shift ? 'SHIFT · ' : ''}${alpha ? 'ALPHA · ' : ''}${hyperbolic ? 'HYP · ' : ''}${mode === 'BASE' ? baseName : degree ? 'DEG' : 'RAD'} · ${mode}${fixDigits !== null && mode !== 'BASE' ? ' · FIX ' + fixDigits : ''}`;
   for (const {button, key, sub, primary, secondary} of keyLabels) {
     const hypTrig = hyperbolic && trigKeys.has(key);
-    primary.textContent = hypTrig ? key + 'h' : key;
+    const baseLabel = mode === 'BASE' && (baseSelectors[key] || (baseName === 'HEX' && hexKeys[key]));
+    primary.textContent = baseLabel || (mode === 'CMPLX' && key === 'ENG' ? 'i' : hypTrig ? key + 'h' : key);
     secondary.textContent = hypTrig ? key + 'h⁻¹' : sub;
-    button.classList.toggle('shifted', shift && Boolean(sub));
+    const canShift = mode !== 'BASE' || /^[123]$/.test(key) || key === 'MODE';
+    button.classList.toggle('shifted', shift && Boolean(sub) && canShift);
     button.classList.toggle('active', (shift && key === 'SHIFT') ||
       (alpha && key === 'ALPHA') || (hyperbolic && key === 'hyp'));
   }
@@ -116,11 +270,10 @@ function factorial(value) {
   return result;
 }
 function evaluate(expression) {
-  if (!expression.trim()) return 0;
+  if (!expression.trim()) return mode === 'BASE' ? 0n : 0;
   const radians = value => degree ? value * Math.PI / 180 : value;
   const angle = value => degree ? value * 180 / Math.PI : value;
   const functions = {
-    answer: ans,
     sin: value => Math.sin(radians(value)),
     cos: value => Math.cos(radians(value)),
     tan: value => Math.tan(radians(value)),
@@ -129,36 +282,29 @@ function evaluate(expression) {
     atan: value => angle(Math.atan(value)),
     sinh: Math.sinh, cosh: Math.cosh, tanh: Math.tanh,
     asinh: Math.asinh, acosh: Math.acosh, atanh: Math.atanh,
-    sqrt: Math.sqrt, cbrt: Math.cbrt, ln: Math.log, log10: Math.log10,
-    pow10: value => 10 ** value, exp: Math.exp, abs: Math.abs, factorial,
+    sqrt: Math.sqrt, cbrt: Math.cbrt, ln: Math.log, log: Math.log10,
+    powten: value => 10 ** value, exp: Math.exp, abs: Math.abs, Rnd: roundNumber,
+    Pol: (x, y) => ({re: Math.hypot(x, y), im: angle(Math.atan2(y, x)), coordinates: 'polar'}),
+    Rec: (radius, direction) => ({re: radius * Math.cos(radians(direction)),
+      im: radius * Math.sin(radians(direction)), coordinates: 'rectangular'}),
   };
   const number = '(\\d+(?:\\.\\d*)?|\\.\\d+)';
   const sexagesimal = new RegExp(`${number}°(?:${number}′(?:${number}″)?)?`, 'g');
   const withoutLeadingZeroes = value => value.replace(/^0+(?=\d)/, '');
   const callableNames = {
-    '√': 'sqrt', '³√': 'cbrt', '10ˣ': 'pow10', 'eˣ': 'exp', log: 'log10',
+    '√': 'sqrt', '³√': 'cbrt', '10ˣ': 'powten', 'eˣ': 'exp', log: 'log',
     'sin⁻¹': 'asin', 'cos⁻¹': 'acos', 'tan⁻¹': 'atan',
     'sinh⁻¹': 'asinh', 'cosh⁻¹': 'acosh', 'tanh⁻¹': 'atanh',
   };
   const translated = expression
     .replace(sexagesimal, (_, d, m = '0', s = '0') =>
-      `(${withoutLeadingZeroes(d)}+${withoutLeadingZeroes(m)}/60+${withoutLeadingZeroes(s)}/3600)`)
-    .replace(/(³√|√|10ˣ|eˣ|log|(?:sin|cos|tan)h?⁻¹)\(/g, (_, name) => callableNames[name] + '(')
-    .replace(/Ans/g, 'answer').replace(/π/g, 'Math.PI')
-    .replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-').replace(/\^/g, '**')
-    .replace(/(\banswer\b|\d+(?:\.\d+)?)!/g, 'factorial($1)')
-    .replace(/(\banswer\b|\d+(?:\.\d+)?)%/g, '($1/100)');
-  const identifiers = translated.match(/[A-Za-z_][A-Za-z_0-9.]*/g) || [];
-  if (!/^[\d\s+\-*/().,!A-Za-z_]+$/.test(translated) ||
-      identifiers.some(name => name !== 'Math.PI' && !Object.hasOwn(functions, name))) {
-    throw new SyntaxError();
-  }
-  const calculateValue = Function(...Object.keys(functions), `return (${translated})`);
-  const value = calculateValue(...Object.values(functions));
-  if (typeof value !== 'number' || !Number.isFinite(value)) throw Error('Math ERROR');
-  return value;
+      `(${withoutLeadingZeroes(d)}+${withoutLeadingZeroes(m)}÷60+${withoutLeadingZeroes(s)}÷3600)`)
+    .replace(/(³√|√|10ˣ|eˣ|log|(?:sin|cos|tan)h?⁻¹)\(/g, (_, name) => callableNames[name] + '(');
+  return evaluateArithmetic(translated, {mode, radix: bases[baseName], answer: ans,
+    constants: mode === 'BASE' ? {} : constants, functions: mode === 'BASE' ? {} : functions, factorial});
 }
 function decimalText(value) {
+  if (fixDigits !== null && Number.isFinite(value)) return roundedText(value, fixDigits);
   return Number(value.toPrecision(12)).toString();
 }
 function fractionText(value, mixed) {
@@ -207,10 +353,11 @@ function sexagesimalText(value) {
 }
 function resultDisplay(format, output) {
   resultFormat = format;
+  $('result').dataset.format = format;
   $('result').textContent = output;
 }
 function toggleFraction(shifted) {
-  if (inputState !== 'answer') return;
+  if (inputState !== 'answer' || typeof ans !== 'number' || resultFormat === 'coordinates') return;
   if (!shifted && ['fraction', 'mixed'].includes(resultFormat)) {
     resultDisplay('decimal', decimalText(ans));
     return;
@@ -220,7 +367,7 @@ function toggleFraction(shifted) {
   if (output !== null) resultDisplay(mixed ? 'mixed' : 'fraction', output);
 }
 function showEngineering(reverse) {
-  if (inputState !== 'answer') return;
+  if (inputState !== 'answer' || typeof ans !== 'number' || resultFormat === 'coordinates') return;
   const [mantissa, exponentText] = ans.toExponential(11).split('e');
   const exponent = Number(exponentText);
   const base = Math.floor(exponent / 3) * 3;
@@ -239,6 +386,7 @@ function showEngineering(reverse) {
 }
 function pressSexagesimal() {
   if (inputState === 'answer') {
+    if (typeof ans !== 'number' || resultFormat === 'coordinates') return;
     if (resultFormat === 'sexagesimal') resultDisplay('decimal', decimalText(ans));
     else {
       const output = sexagesimalText(ans);
@@ -282,12 +430,16 @@ function completeExpression(expression) {
 }
 function calculate() {
   try {
-    const completed = completeExpression(expr);
+    const completed = completeExpression(expr || (inputState === 'answer' ? 'Ans' : ''));
     const value = evaluate(completed);
     expr = completed;
-    ans = value;
-    const output = decimalText(value);
-    resultDisplay('decimal', output);
+    const coordinates = typeof value === 'object' && value.coordinates;
+    ans = coordinates ? value.re : value;
+    const labels = coordinates === 'polar' ? ['r', 'θ'] : ['x', 'y'];
+    const output = coordinates
+      ? `${labels[0]}=${decimalText(value.re)}  ${labels[1]}=${decimalText(value.im)}`
+      : formatAnswer(value);
+    resultDisplay(coordinates ? 'coordinates' : 'decimal', output);
     inputState = 'answer';
     history.push([expr, output]);
     if (history.length > 100) history.shift();
@@ -298,6 +450,10 @@ function calculate() {
   render();
 }
 function press(key, sub) {
+  if (setupPage) {
+    pressSetup(key);
+    return;
+  }
   if (key === 'SHIFT' || key === 'ALPHA') {
     shift = key === 'SHIFT' && !shift;
     alpha = key === 'ALPHA' && !alpha;
@@ -315,7 +471,8 @@ function press(key, sub) {
     return;
   }
   if (key === 'MODE') {
-    degree = !degree;
+    if (shifted) setupPage = 'menu';
+    else if (mode !== 'BASE') degree = !degree;
     render();
     return;
   }
@@ -330,6 +487,25 @@ function press(key, sub) {
     return;
   }
   if (['▶', '▲', '▼'].includes(key)) {
+    render();
+    return;
+  }
+  if (shifted && key === '1') {
+    $('statistics-panel').showModal();
+    render();
+    return;
+  }
+  if (shifted && (key === '2' || key === '3')) {
+    setMode(key === '2' ? 'CMPLX' : 'BASE');
+    return;
+  }
+  if (mode === 'BASE') {
+    if (shifted && sub) render();
+    else pressBase(key);
+    return;
+  }
+  if (shifted && key === '7') {
+    $('constants-panel').showModal();
     render();
     return;
   }
@@ -354,7 +530,8 @@ function press(key, sub) {
   } else if (key === 'S⇔D') {
     toggleFraction(shifted);
   } else if (key === 'ENG') {
-    showEngineering(shifted);
+    if (mode === 'CMPLX' && !shifted) append('i');
+    else showEngineering(shifted);
   } else if (key === '°′″') {
     pressSexagesimal();
   } else if (key === 'hyp') {
@@ -365,11 +542,15 @@ function press(key, sub) {
   } else if (key === 'M+') {
     try {
       const value = inputState === 'answer' ? ans : evaluate(expr);
-      memory += (shifted ? -1 : 1) * value;
+      if (typeof value === 'number') memory += (shifted ? -1 : 1) * value;
     } catch {}
   } else if (key === 'RCL') {
-    if (shifted) memory = inputState === 'answer' ? ans : evaluate(expr);
-    else append(String(memory));
+    if (shifted) {
+      try {
+        const value = inputState === 'answer' ? ans : evaluate(expr);
+        if (typeof value === 'number') memory = value;
+      } catch {}
+    } else append(String(memory).replace(/^-/, '−'));
   } else if (key === 'Ans') {
     if (shifted) degree = !degree;
     else append('Ans');
@@ -380,18 +561,19 @@ function press(key, sub) {
       ln: shifted ? 'eˣ(' : 'ln(',
       'x²': shifted ? '^3' : '^2',
       'xʸ': '^',
-      'x⁻¹': shifted ? '!' : '^(-1)',
+      'x⁻¹': shifted ? '!' : '^(−1)',
       '(': shifted ? '%' : '(',
-      ')': ')',
+      ')': shifted ? ',' : ')',
       '(−)': '−',
-      '×': '×',
-      '÷': '÷',
-      '−': '−',
-      '+': '+',
+      '×': shifted ? 'nPr' : '×',
+      '÷': shifted ? 'nCr' : '÷',
+      '−': shifted ? 'Rec(' : '−',
+      '+': shifted ? 'Pol(' : '+',
       '×10ˣ': shifted ? 'π' : '×10^',
       'logₐ': 'log(',
       'a/b': '÷',
       'π': 'π',
+      '0': shifted ? 'Rnd(' : '0',
       CALC: '',
       '∫': '',
     };
@@ -401,7 +583,7 @@ function press(key, sub) {
     }
     if (Object.hasOwn(functions, key)) {
       if (functions[key]) {
-        append(functions[key], functions[key] !== 'π' && (answerContinuationKeys.has(key) || functions[key] === '%'));
+        append(functions[key], !['π', 'Pol(', 'Rec('].includes(functions[key]) && (answerContinuationKeys.has(key) || functions[key] === '%'));
         return;
       }
       $('result').textContent = '未実装';
@@ -412,5 +594,6 @@ function press(key, sub) {
   }
   render();
 }
+initializePanels();
 render();if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
 </script></body></html>
