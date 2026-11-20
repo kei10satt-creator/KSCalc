@@ -41,7 +41,7 @@ html,body{height:100%;overflow:hidden}body{height:100dvh}.calc{height:100dvh;min
 .number-pad { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .key{min-height:0;border-radius:7px;font-size:clamp(12px,2.2dvh,20px);padding:0 1px;box-shadow:0 2px 1px #121719}.key .secondary{font-size:clamp(7px,1.1dvh,10px);min-height:0}.key.number{font-size:clamp(18px,3.1dvh,27px)}.footer{flex:0 0 auto;font-size:clamp(7px,1dvh,10px);margin:0}.history.show{position:absolute;z-index:4;left:5%;right:5%;top:25%;max-height:40dvh;overflow:auto;border:2px solid #899a9d}.key:focus-visible{outline:2px solid white}
 @media(max-height:650px){.sub,.footer{display:none}.screen{flex-basis:14dvh}.calc{gap:2px}}
-</style></head><body><main class="calc"><div><div class="brand">CASIO <span style="float:right;font-size:12px">KS EDITION</span></div><div class="sub">fx-375ESA · NATURAL-V.P.A.M. inspired</div></div><div class="screen"><div class="status" id="status">DEG · COMP</div><div class="expression" id="expr"></div><div class="result" id="result">0</div></div><div class="history" id="history"></div><div class="top" id="top"></div><div class="keys"><div class="key-group function-keys" id="function-keys" role="group" aria-label="関数キー"></div><div class="key-group number-pad" id="number-pad" role="group" aria-label="テンキー"></div></div><div class="footer">v0.1.2 · 1画面表示 · オフライン対応 · 計算結果は近似値の場合があります</div></main><script>
+</style></head><body><main class="calc"><div><div class="brand">CASIO <span style="float:right;font-size:12px">KS EDITION</span></div><div class="sub">fx-375ESA · NATURAL-V.P.A.M. inspired</div></div><div class="screen"><div class="status" id="status">DEG · COMP</div><div class="expression" id="expr"></div><div class="result" id="result">0</div></div><div class="history" id="history"></div><div class="top" id="top"></div><div class="keys"><div class="key-group function-keys" id="function-keys" role="group" aria-label="関数キー"></div><div class="key-group number-pad" id="number-pad" role="group" aria-label="テンキー"></div></div><div class="footer">v0.1.3 · 1画面表示 · オフライン対応 · 計算結果は近似値の場合があります</div></main><script>
 const functionRows = [
   [['CALC', 'SOLVE'], ['∫', 'd/dx'], null, null, ['x⁻¹', 'x!'], ['logₐ', 'Σ']],
   [['a/b', 'a b/c'], ['√', '³√'], ['x²', 'x³'], ['xʸ', 'ʸ√x'], ['log', '10ˣ'], ['ln', 'eˣ']],
@@ -56,6 +56,7 @@ const numberRows = [
 ];
 const topKeys = [['SHIFT', ''], ['ALPHA', ''], ['▲', ''], ['MODE', 'SETUP'], ['ON', ''], ['◀', ''], ['▼', ''], ['▶', '']];
 const $=id=>document.getElementById(id);let expr='',ans=0,shift=false,alpha=false,degree=true,memory=0,history=[],showDecimal=false;
+let inputState = 'editing';
 function buildKeys(parent, rows) {
   rows.forEach((row, rowIndex) => {
     row.forEach((entry, columnIndex) => {
@@ -77,7 +78,7 @@ function buildKeys(parent, rows) {
       const primary = document.createElement('span');
       primary.textContent = key;
       button.append(secondary, primary);
-      button.addEventListener('click', () => press(key, sub));
+      button.addEventListener('click', () => press(key));
       parent.append(button);
     });
   });
@@ -87,11 +88,146 @@ buildKeys($('function-keys'), functionRows);
 buildKeys($('number-pad'), numberRows);
 function render(){ $('expr').textContent=expr;$('status').textContent=`${shift?'SHIFT · ':''}${alpha?'ALPHA · ':''}${degree?'DEG':'RAD'} · COMP` ;document.querySelectorAll('.key').forEach(k=>k.classList.toggle('active',(shift&&k.textContent.includes('SHIFT'))||(alpha&&k.textContent.includes('ALPHA'))))}
 function factorial(n){if(!Number.isInteger(n)||n<0||n>170)throw Error('Math ERROR');let v=1;for(let i=2;i<=n;i++)v*=i;return v}
-function evaluate(s){if(!s.trim())return 0;let x=s.replace(/Ans/g,`(${ans})`).replace(/π/g,'Math.PI').replace(/×/g,'*').replace(/÷/g,'/').replace(/−/g,'-').replace(/\^/g,'**').replace(/√\(/g,'sqrt(').replace(/³√\(/g,'cbrt(').replace(/sin⁻¹\(/g,'asin(').replace(/cos⁻¹\(/g,'acos(').replace(/tan⁻¹\(/g,'atan(').replace(/sin\(/g,'sin(').replace(/cos\(/g,'cos(').replace(/tan\(/g,'tan(').replace(/ln\(/g,'log(').replace(/log\(/g,'log10(').replace(/10ˣ\(/g,'pow10(').replace(/eˣ\(/g,'exp(').replace(/abs\(/g,'abs(').replace(/(\d+(?:\.\d+)?)!/g,'factorial($1)').replace(/(\d+(?:\.\d+)?)%/g,'($1/100)');if(!/^[\d\s+\-*/().,!A-Za-z_]+$/.test(x))throw Error('Syntax ERROR');let allowed=['Math.PI','sin','cos','tan','asin','acos','atan','sqrt','cbrt','log','log10','pow10','exp','abs','factorial'];let identifiers=x.match(/[A-Za-z_][A-Za-z_0-9.]*/g)||[];if(identifiers.some(t=>!allowed.includes(t)))throw Error('Syntax ERROR');let rad=a=>degree?a*Math.PI/180:a,derad=a=>degree?a*180/Math.PI:a;let f=Function('sin','cos','tan','asin','acos','atan','sqrt','cbrt','log','log10','pow10','exp','abs','factorial',`return (${x})`);let value=f(a=>Math.sin(rad(a)),a=>Math.cos(rad(a)),a=>Math.tan(rad(a)),a=>derad(Math.asin(a)),a=>derad(Math.acos(a)),a=>derad(Math.atan(a)),Math.sqrt,Math.cbrt,Math.log,Math.log10,a=>10**a,Math.exp,Math.abs,factorial);if(typeof value!=='number'||!Number.isFinite(value))throw Error('Math ERROR');return value}
-function append(s){expr+=s;render()}
-function press(k,sub){if(k==='SHIFT'){shift=!shift;alpha=false;render();return}if(k==='ALPHA'){alpha=!alpha;shift=false;render();return}if(k==='ON'){expr='';render();return}if(k==='MODE'){if(shift){degree=!degree;shift=false}else degree=!degree;render();return}if(k==='HIST'){let el=$('history');el.classList.toggle('show');el.innerHTML=history.slice(-12).reverse().map(h=>`<div>${h[0]} = ${h[1]}</div>`).join('');return}if(k==='◀'){expr=expr.slice(0,-1);render();return}if(['▶','▲','▼'].includes(k)){return}let s=shift;shift=false;alpha=false;
-if(k==='AC'){if(s){history=[];memory=0;ans=0}expr='';$('result').textContent='0';render();return}if(k==='DEL'){expr=expr.slice(0,-1);render();return}if(k==='='){try{let val=evaluate(expr);ans=val;let out=Number(val.toPrecision(12)).toString();$('result').textContent=out;history.push([expr,out]);if(history.length>100)history.shift()}catch(e){$('result').textContent=e.message||'ERROR'}render();return}if(k==='S⇔D'){showDecimal=!showDecimal;try{$('result').textContent=String(evaluate(expr))}catch{}render();return}if(k==='M+'){try{memory+=(s?-1:1)*evaluate(expr)}catch{}render();return}if(k==='RCL'){if(s){memory=evaluate(expr)}else append(String(memory));render();return}if(k==='Ans'){if(s){degree=!degree;render()}else append('Ans');return}
-const funcs={'√':'√(','sin':s?'sin⁻¹(':'sin(','cos':s?'cos⁻¹(':'cos(','tan':s?'tan⁻¹(':'tan(','log':s?'10ˣ(':'log(','ln':s?'eˣ(':'ln(','x²':'^2','xʸ':'^','x⁻¹':'^(-1)','(':'(',')':')','(−)':'−','×':'×','÷':'÷','−':'−','+':'+','×10ˣ':'×10^','hyp':'','ENG':'','°′″':'','logₐ':'log(','a/b':'÷','CALC':'','∫':'','π':'π'};
-if(k==='x²'&&s){append('^3');return}if(k==='√'&&s){append('³√(');return}if(k==='x⁻¹'&&s){append('!');return}if(k==='×10ˣ'&&s){append('π');return}if(k==='.'&&s){append(String(Math.random()));return}if(k==='('&&s){append('%');return}if(k in funcs){if(funcs[k])append(funcs[k]);else {$('result').textContent='未実装'}render();return}if(/^[0-9.]$/.test(k))append(k);else render()}
+function evaluate(s){if(!s.trim())return 0;let x=s.replace(/Ans/g,'answer').replace(/π/g,'Math.PI').replace(/×/g,'*').replace(/÷/g,'/').replace(/−/g,'-').replace(/\^/g,'**').replace(/√\(/g,'sqrt(').replace(/³√\(/g,'cbrt(').replace(/sin⁻¹\(/g,'asin(').replace(/cos⁻¹\(/g,'acos(').replace(/tan⁻¹\(/g,'atan(').replace(/sin\(/g,'sin(').replace(/cos\(/g,'cos(').replace(/tan\(/g,'tan(').replace(/ln\(/g,'log(').replace(/log\(/g,'log10(').replace(/10ˣ\(/g,'pow10(').replace(/eˣ\(/g,'exp(').replace(/abs\(/g,'abs(').replace(/(\banswer\b|\d+(?:\.\d+)?)!/g,'factorial($1)').replace(/(\banswer\b|\d+(?:\.\d+)?)%/g,'($1/100)');if(!/^[\d\s+\-*/().,!A-Za-z_]+$/.test(x))throw Error('Syntax ERROR');let allowed=['answer','Math.PI','sin','cos','tan','asin','acos','atan','sqrt','cbrt','log','log10','pow10','exp','abs','factorial'];let identifiers=x.match(/[A-Za-z_][A-Za-z_0-9.]*/g)||[];if(identifiers.some(t=>!allowed.includes(t)))throw Error('Syntax ERROR');let rad=a=>degree?a*Math.PI/180:a,derad=a=>degree?a*180/Math.PI:a;let f=Function('answer','sin','cos','tan','asin','acos','atan','sqrt','cbrt','log','log10','pow10','exp','abs','factorial',`return (${x})`);let value=f(ans,a=>Math.sin(rad(a)),a=>Math.cos(rad(a)),a=>Math.tan(rad(a)),a=>derad(Math.asin(a)),a=>derad(Math.acos(a)),a=>derad(Math.atan(a)),Math.sqrt,Math.cbrt,Math.log,Math.log10,a=>10**a,Math.exp,Math.abs,factorial);if(typeof value!=='number'||!Number.isFinite(value))throw Error('Math ERROR');return value}
+const answerContinuationKeys = new Set(['+', '−', '×', '÷', 'a/b', 'x²', 'xʸ', 'x⁻¹', '×10ˣ']);
+function startEditing(expression) {
+  expr = expression;
+  inputState = 'editing';
+  $('result').textContent = '0';
+}
+function append(text, continueFromAnswer = false) {
+  if (inputState !== 'editing') {
+    startEditing(inputState === 'answer' && continueFromAnswer ? 'Ans' : '');
+  }
+  expr += text;
+  render();
+}
+function deleteLast() {
+  const shortened = expr.slice(0, -1);
+  if (inputState === 'editing') expr = shortened;
+  else startEditing(shortened);
+  render();
+}
+function calculate() {
+  try {
+    const value = evaluate(expr);
+    ans = value;
+    const output = Number(value.toPrecision(12)).toString();
+    $('result').textContent = output;
+    inputState = 'answer';
+    history.push([expr, output]);
+    if (history.length > 100) history.shift();
+  } catch (error) {
+    $('result').textContent = error.message || 'ERROR';
+    inputState = 'error';
+  }
+  render();
+}
+function press(key) {
+  if (key === 'SHIFT' || key === 'ALPHA') {
+    shift = key === 'SHIFT' && !shift;
+    alpha = key === 'ALPHA' && !alpha;
+    render();
+    return;
+  }
+  if (key === 'ON') {
+    startEditing('');
+    render();
+    return;
+  }
+  if (key === 'MODE') {
+    degree = !degree;
+    shift = false;
+    render();
+    return;
+  }
+  if (key === 'HIST') {
+    const panel = $('history');
+    panel.classList.toggle('show');
+    panel.innerHTML = history.slice(-12).reverse().map(h => `<div>${h[0]} = ${h[1]}</div>`).join('');
+    return;
+  }
+  if (key === '◀') {
+    deleteLast();
+    return;
+  }
+  if (['▶', '▲', '▼'].includes(key)) return;
+
+  const shifted = shift;
+  shift = false;
+  alpha = false;
+  if (key === 'AC') {
+    if (shifted) {
+      history = [];
+      memory = 0;
+      ans = 0;
+    }
+    startEditing('');
+  } else if (key === 'DEL') {
+    deleteLast();
+    return;
+  } else if (key === '=') {
+    calculate();
+    return;
+  } else if (key === 'S⇔D') {
+    showDecimal = !showDecimal;
+    try {
+      $('result').textContent = String(inputState === 'answer' ? ans : evaluate(expr));
+    } catch {}
+  } else if (key === 'M+') {
+    try {
+      memory += (shifted ? -1 : 1) * evaluate(expr);
+    } catch {}
+  } else if (key === 'RCL') {
+    if (shifted) memory = evaluate(expr);
+    else append(String(memory));
+  } else if (key === 'Ans') {
+    if (shifted) degree = !degree;
+    else append('Ans');
+  } else {
+    const functions = {
+      '√': shifted ? '³√(' : '√(',
+      sin: shifted ? 'sin⁻¹(' : 'sin(',
+      cos: shifted ? 'cos⁻¹(' : 'cos(',
+      tan: shifted ? 'tan⁻¹(' : 'tan(',
+      log: shifted ? '10ˣ(' : 'log(',
+      ln: shifted ? 'eˣ(' : 'ln(',
+      'x²': shifted ? '^3' : '^2',
+      'xʸ': '^',
+      'x⁻¹': shifted ? '!' : '^(-1)',
+      '(': shifted ? '%' : '(',
+      ')': ')',
+      '(−)': '−',
+      '×': '×',
+      '÷': '÷',
+      '−': '−',
+      '+': '+',
+      '×10ˣ': shifted ? 'π' : '×10^',
+      'logₐ': 'log(',
+      'a/b': '÷',
+      'π': 'π',
+      hyp: '',
+      ENG: '',
+      '°′″': '',
+      CALC: '',
+      '∫': '',
+    };
+    if (key === '.' && shifted) {
+      append(String(Math.random()));
+      return;
+    }
+    if (Object.hasOwn(functions, key)) {
+      if (functions[key]) {
+        append(functions[key], functions[key] !== 'π' && (answerContinuationKeys.has(key) || functions[key] === '%'));
+        return;
+      }
+      $('result').textContent = '未実装';
+    } else if (/^[0-9.]$/.test(key)) {
+      append(key);
+      return;
+    }
+  }
+  render();
+}
 render();if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
 </script></body></html>

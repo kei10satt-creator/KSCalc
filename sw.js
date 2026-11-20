@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kscalc-v012';
+const CACHE_NAME = 'kscalc-v013';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon.png', './icon-512.png'];
 const assetUrls = new Set(ASSETS.map(path => new URL(path, self.registration.scope).href));
 
@@ -12,7 +12,7 @@ self.addEventListener('install', event => {
 
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {
-    await Promise.all([caches.delete('kscalc-v010'), caches.delete('kscalc-v011')]);
+    await Promise.all(['kscalc-v010', 'kscalc-v011', 'kscalc-v012'].map(name => caches.delete(name)));
     await self.clients.claim();
   })());
 });
