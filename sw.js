@@ -1,1 +1,39 @@
-const CACHE='kscalc-v010';self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(['./','./index.html','./manifest.webmanifest','./icon.png','./icon-512.png'])));self.skipWaiting()});self.addEventListener('activate',e=>{e.waitUntil(self.clients.claim())});self.addEventListener('fetch',e=>{e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request)))});
+const CACHE_NAME = 'kscalc-v011';
+const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon.png', './icon-512.png'];
+const assetUrls = new Set(ASSETS.map(path => new URL(path, self.registration.scope).href));
+
+self.addEventListener('install', event => {
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    await cache.addAll(ASSETS.map(path => new Request(path, { cache: 'reload' })));
+    await self.skipWaiting();
+  })());
+});
+
+self.addEventListener('activate', event => {
+  event.waitUntil((async () => {
+    await caches.delete('kscalc-v010');
+    await self.clients.claim();
+  })());
+});
+
+self.addEventListener('fetch', event => {
+  const request = event.request;
+  if (request.method !== 'GET' || !assetUrls.has(request.url)) return;
+
+  event.respondWith((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    if (request.mode === 'navigate') {
+      try {
+        const response = await fetch(request);
+        if (response.ok) return response;
+        return (await cache.match(request)) || response;
+      } catch (error) {
+        const cached = await cache.match(request);
+        if (cached) return cached;
+        throw error;
+      }
+    }
+    return (await cache.match(request)) || fetch(request);
+  })());
+});
