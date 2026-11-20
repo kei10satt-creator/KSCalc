@@ -40,8 +40,11 @@ html,body{height:100%;overflow:hidden}body{height:100dvh}.calc{height:100dvh;min
 .function-keys { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 .number-pad { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .key{min-height:0;border-radius:7px;font-size:clamp(12px,2.2dvh,20px);padding:0 1px;box-shadow:0 2px 1px #121719}.key .secondary{font-size:clamp(7px,1.1dvh,10px);min-height:0}.key.number{font-size:clamp(18px,3.1dvh,27px)}.footer{flex:0 0 auto;font-size:clamp(7px,1dvh,10px);margin:0}.history.show{position:absolute;z-index:4;left:5%;right:5%;top:25%;max-height:40dvh;overflow:auto;border:2px solid #899a9d}.key:focus-visible{outline:2px solid white}
+
+.key.shifted .secondary { font-size: clamp(12px, 3.6vw, 19px); }
+.key.shifted .primary { display: none; }
 @media(max-height:650px){.sub,.footer{display:none}.screen{flex-basis:14dvh}.calc{gap:2px}}
-</style></head><body><main class="calc"><div><div class="brand">CASIO <span style="float:right;font-size:12px">KS EDITION</span></div><div class="sub">fx-375ESA · NATURAL-V.P.A.M. inspired</div></div><div class="screen"><div class="status" id="status">DEG · COMP</div><div class="expression" id="expr"></div><div class="result" id="result">0</div></div><div class="history" id="history"></div><div class="top" id="top"></div><div class="keys"><div class="key-group function-keys" id="function-keys" role="group" aria-label="関数キー"></div><div class="key-group number-pad" id="number-pad" role="group" aria-label="テンキー"></div></div><div class="footer">v0.1.4 · 1画面表示 · オフライン対応 · 計算結果は近似値の場合があります</div></main><script>
+</style></head><body><main class="calc"><div><div class="brand">CASIO <span style="float:right;font-size:12px">KS EDITION</span></div><div class="sub">fx-375ESA · NATURAL-V.P.A.M. inspired</div></div><div class="screen"><div class="status" id="status">DEG · COMP</div><div class="expression" id="expr"></div><div class="result" id="result">0</div></div><div class="history" id="history"></div><div class="top" id="top"></div><div class="keys"><div class="key-group function-keys" id="function-keys" role="group" aria-label="関数キー"></div><div class="key-group number-pad" id="number-pad" role="group" aria-label="テンキー"></div></div><div class="footer">v0.1.5 · 1画面表示 · オフライン対応 · 計算結果は近似値の場合があります</div></main><script>
 const functionRows = [
   [['CALC', 'SOLVE'], ['∫', 'd/dx'], null, null, ['x⁻¹', 'x!'], ['logₐ', 'Σ']],
   [['a/b', 'a b/c'], ['√', '³√'], ['x²', 'x³'], ['xʸ', 'ʸ√x'], ['log', '10ˣ'], ['ln', 'eˣ']],
@@ -55,7 +58,13 @@ const numberRows = [
   [['0', 'Rnd'], ['.', 'Ran#'], ['×10ˣ', 'π'], ['Ans', 'DRG'], ['=', '']],
 ];
 const topKeys = [['SHIFT', ''], ['ALPHA', ''], ['▲', ''], ['MODE', 'SETUP'], ['ON', ''], ['◀', ''], ['▼', ''], ['▶', '']];
-const $=id=>document.getElementById(id);let expr='',ans=0,shift=false,alpha=false,degree=true,memory=0,history=[],showDecimal=false;
+const $=id=>document.getElementById(id);let expr='',ans=0,shift=false,alpha=false,degree=true,memory=0,history=[];
+let hyperbolic = false;
+let resultFormat = 'decimal';
+let engineeringExponent = 0;
+const keyLabels = [];
+const trigKeys = new Set(['sin', 'cos', 'tan']);
+const supportedShift = new Set(['MODE', 'AC', 'x⁻¹', '√', 'x²', 'log', 'ln', 'hyp', 'sin', 'cos', 'tan', 'RCL', 'ENG', '(', 'S⇔D', 'M+', '.', '×10ˣ', 'Ans']);
 let inputState = 'editing';
 function buildKeys(parent, rows) {
   rows.forEach((row, rowIndex) => {
@@ -76,9 +85,11 @@ function buildKeys(parent, rows) {
       secondary.className = 'secondary';
       secondary.textContent = sub;
       const primary = document.createElement('span');
+      primary.className = 'primary';
       primary.textContent = key;
+      keyLabels.push({button, key, sub, primary, secondary});
       button.append(secondary, primary);
-      button.addEventListener('click', () => press(key));
+      button.addEventListener('click', () => press(key, sub));
       parent.append(button);
     });
   });
@@ -86,14 +97,164 @@ function buildKeys(parent, rows) {
 buildKeys($('top'), [topKeys]);
 buildKeys($('function-keys'), functionRows);
 buildKeys($('number-pad'), numberRows);
-function render(){ $('expr').textContent=expr;$('status').textContent=`${shift?'SHIFT · ':''}${alpha?'ALPHA · ':''}${degree?'DEG':'RAD'} · COMP` ;document.querySelectorAll('.key').forEach(k=>k.classList.toggle('active',(shift&&k.textContent.includes('SHIFT'))||(alpha&&k.textContent.includes('ALPHA'))))}
-function factorial(n){if(!Number.isInteger(n)||n<0||n>170)throw Error('Math ERROR');let v=1;for(let i=2;i<=n;i++)v*=i;return v}
-function evaluate(s){if(!s.trim())return 0;let x=s.replace(/Ans/g,'answer').replace(/π/g,'Math.PI').replace(/×/g,'*').replace(/÷/g,'/').replace(/−/g,'-').replace(/\^/g,'**').replace(/√\(/g,'sqrt(').replace(/³√\(/g,'cbrt(').replace(/sin⁻¹\(/g,'asin(').replace(/cos⁻¹\(/g,'acos(').replace(/tan⁻¹\(/g,'atan(').replace(/sin\(/g,'sin(').replace(/cos\(/g,'cos(').replace(/tan\(/g,'tan(').replace(/ln\(/g,'log(').replace(/log\(/g,'log10(').replace(/10ˣ\(/g,'pow10(').replace(/eˣ\(/g,'exp(').replace(/abs\(/g,'abs(').replace(/(\banswer\b|\d+(?:\.\d+)?)!/g,'factorial($1)').replace(/(\banswer\b|\d+(?:\.\d+)?)%/g,'($1/100)');if(!/^[\d\s+\-*/().,!A-Za-z_]+$/.test(x))throw Error('Syntax ERROR');let allowed=['answer','Math.PI','sin','cos','tan','asin','acos','atan','sqrt','cbrt','log','log10','pow10','exp','abs','factorial'];let identifiers=x.match(/[A-Za-z_][A-Za-z_0-9.]*/g)||[];if(identifiers.some(t=>!allowed.includes(t)))throw Error('Syntax ERROR');let rad=a=>degree?a*Math.PI/180:a,derad=a=>degree?a*180/Math.PI:a;let f=Function('answer','sin','cos','tan','asin','acos','atan','sqrt','cbrt','log','log10','pow10','exp','abs','factorial',`return (${x})`);let value=f(ans,a=>Math.sin(rad(a)),a=>Math.cos(rad(a)),a=>Math.tan(rad(a)),a=>derad(Math.asin(a)),a=>derad(Math.acos(a)),a=>derad(Math.atan(a)),Math.sqrt,Math.cbrt,Math.log,Math.log10,a=>10**a,Math.exp,Math.abs,factorial);if(typeof value!=='number'||!Number.isFinite(value))throw Error('Math ERROR');return value}
+function render() {
+  $('expr').textContent = expr;
+  $('status').textContent = `${shift ? 'SHIFT · ' : ''}${alpha ? 'ALPHA · ' : ''}${hyperbolic ? 'HYP · ' : ''}${degree ? 'DEG' : 'RAD'} · COMP`;
+  for (const {button, key, sub, primary, secondary} of keyLabels) {
+    const hypTrig = hyperbolic && trigKeys.has(key);
+    primary.textContent = hypTrig ? key + 'h' : key;
+    secondary.textContent = hypTrig ? key + 'h⁻¹' : sub;
+    button.classList.toggle('shifted', shift && Boolean(sub));
+    button.classList.toggle('active', (shift && key === 'SHIFT') ||
+      (alpha && key === 'ALPHA') || (hyperbolic && key === 'hyp'));
+  }
+}
+function factorial(value) {
+  if (!Number.isInteger(value) || value < 0 || value > 170) throw Error('Math ERROR');
+  let result = 1;
+  for (let multiplier = 2; multiplier <= value; multiplier++) result *= multiplier;
+  return result;
+}
+function evaluate(expression) {
+  if (!expression.trim()) return 0;
+  const radians = value => degree ? value * Math.PI / 180 : value;
+  const angle = value => degree ? value * 180 / Math.PI : value;
+  const functions = {
+    answer: ans,
+    sin: value => Math.sin(radians(value)),
+    cos: value => Math.cos(radians(value)),
+    tan: value => Math.tan(radians(value)),
+    asin: value => angle(Math.asin(value)),
+    acos: value => angle(Math.acos(value)),
+    atan: value => angle(Math.atan(value)),
+    sinh: Math.sinh, cosh: Math.cosh, tanh: Math.tanh,
+    asinh: Math.asinh, acosh: Math.acosh, atanh: Math.atanh,
+    sqrt: Math.sqrt, cbrt: Math.cbrt, ln: Math.log, log10: Math.log10,
+    pow10: value => 10 ** value, exp: Math.exp, abs: Math.abs, factorial,
+  };
+  const number = '(\\d+(?:\\.\\d*)?|\\.\\d+)';
+  const sexagesimal = new RegExp(`${number}°(?:${number}′(?:${number}″)?)?`, 'g');
+  const withoutLeadingZeroes = value => value.replace(/^0+(?=\d)/, '');
+  const callableNames = {
+    '√': 'sqrt', '³√': 'cbrt', '10ˣ': 'pow10', 'eˣ': 'exp', log: 'log10',
+    'sin⁻¹': 'asin', 'cos⁻¹': 'acos', 'tan⁻¹': 'atan',
+    'sinh⁻¹': 'asinh', 'cosh⁻¹': 'acosh', 'tanh⁻¹': 'atanh',
+  };
+  const translated = expression
+    .replace(sexagesimal, (_, d, m = '0', s = '0') =>
+      `(${withoutLeadingZeroes(d)}+${withoutLeadingZeroes(m)}/60+${withoutLeadingZeroes(s)}/3600)`)
+    .replace(/(³√|√|10ˣ|eˣ|log|(?:sin|cos|tan)h?⁻¹)\(/g, (_, name) => callableNames[name] + '(')
+    .replace(/Ans/g, 'answer').replace(/π/g, 'Math.PI')
+    .replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-').replace(/\^/g, '**')
+    .replace(/(\banswer\b|\d+(?:\.\d+)?)!/g, 'factorial($1)')
+    .replace(/(\banswer\b|\d+(?:\.\d+)?)%/g, '($1/100)');
+  const identifiers = translated.match(/[A-Za-z_][A-Za-z_0-9.]*/g) || [];
+  if (!/^[\d\s+\-*/().,!A-Za-z_]+$/.test(translated) ||
+      identifiers.some(name => name !== 'Math.PI' && !Object.hasOwn(functions, name))) {
+    throw new SyntaxError();
+  }
+  const calculateValue = Function(...Object.keys(functions), `return (${translated})`);
+  const value = calculateValue(...Object.values(functions));
+  if (typeof value !== 'number' || !Number.isFinite(value)) throw Error('Math ERROR');
+  return value;
+}
+function decimalText(value) {
+  return Number(value.toPrecision(12)).toString();
+}
+function fractionText(value, mixed) {
+  const magnitude = Math.abs(value);
+  if (Number.isInteger(magnitude)) return null;
+
+  // Use a small denominator and require agreement within floating-point rounding.
+  let previousNumerator = 0;
+  let previousDenominator = 1;
+  let numerator = 1;
+  let denominator = 0;
+  let remainder = magnitude;
+  while (Number.isFinite(remainder)) {
+    const integer = Math.floor(remainder);
+    const nextNumerator = integer * numerator + previousNumerator;
+    const nextDenominator = integer * denominator + previousDenominator;
+    if (!Number.isSafeInteger(nextNumerator) || nextDenominator > 1000000) break;
+    [previousNumerator, numerator] = [numerator, nextNumerator];
+    [previousDenominator, denominator] = [denominator, nextDenominator];
+    if (Math.abs(numerator / denominator - magnitude) <= 4 * Number.EPSILON * magnitude) {
+      if (denominator === 1) return null;
+      const sign = value < 0 ? '−' : '';
+      if (mixed && numerator > denominator) {
+        return `${sign}${Math.floor(numerator / denominator)} ${numerator % denominator}/${denominator}`;
+      }
+      return `${sign}${numerator}/${denominator}`;
+    }
+    remainder = 1 / (remainder - integer);
+  }
+  return null;
+}
+function sexagesimalText(value) {
+  const magnitude = Math.abs(value);
+  let degrees = Math.floor(magnitude);
+  if (!Number.isSafeInteger(degrees)) return null;
+  const secondsPerDegree = 3600;
+  const unitsPerSecond = 1000000;
+  let units = Math.round((magnitude - degrees) * secondsPerDegree * unitsPerSecond);
+  if (units === secondsPerDegree * unitsPerSecond) {
+    degrees++;
+    units = 0;
+  }
+  const minutes = Math.floor(units / (60 * unitsPerSecond));
+  const seconds = (units % (60 * unitsPerSecond)) / unitsPerSecond;
+  return `${value < 0 ? '−' : ''}${degrees}°${minutes}′${seconds}″`;
+}
+function resultDisplay(format, output) {
+  resultFormat = format;
+  $('result').textContent = output;
+}
+function toggleFraction(shifted) {
+  if (inputState !== 'answer') return;
+  if (!shifted && ['fraction', 'mixed'].includes(resultFormat)) {
+    resultDisplay('decimal', decimalText(ans));
+    return;
+  }
+  const mixed = shifted && resultFormat !== 'mixed';
+  const output = fractionText(ans, mixed);
+  if (output !== null) resultDisplay(mixed ? 'mixed' : 'fraction', output);
+}
+function showEngineering(reverse) {
+  if (inputState !== 'answer') return;
+  const [mantissa, exponentText] = ans.toExponential(11).split('e');
+  const exponent = Number(exponentText);
+  const base = Math.floor(exponent / 3) * 3;
+  let next = base;
+  if (ans !== 0) {
+    if (resultFormat === 'engineering') next = engineeringExponent + (reverse ? 3 : -3);
+    else if (reverse) next += 3;
+    if (Math.abs(exponent - next) > 12) return;
+  }
+  engineeringExponent = next;
+  const coefficient = Number(`${mantissa}e${exponent - next}`).toLocaleString('en-US', {
+    useGrouping: false, maximumSignificantDigits: 12,
+  });
+  const superscript = String(next).replace(/[-0-9]/g, char => char === '-' ? '⁻' : '⁰¹²³⁴⁵⁶⁷⁸⁹'[Number(char)]);
+  resultDisplay('engineering', `${coefficient} × 10${superscript}`);
+}
+function pressSexagesimal() {
+  if (inputState === 'answer') {
+    if (resultFormat === 'sexagesimal') resultDisplay('decimal', decimalText(ans));
+    else {
+      const output = sexagesimalText(ans);
+      if (output !== null) resultDisplay('sexagesimal', output);
+    }
+    return;
+  }
+  const term = expr.match(/[0-9.°′″]+$/)?.[0] || '';
+  const marks = term.match(/[°′″]/g) || [];
+  if (marks.length < 3 && /\d(?:\.\d*)?$/.test(term)) append('°′″'[marks.length]);
+}
 const answerContinuationKeys = new Set(['+', '−', '×', '÷', 'a/b', 'x²', 'xʸ', 'x⁻¹', '×10ˣ']);
 function startEditing(expression) {
   expr = expression;
   inputState = 'editing';
-  $('result').textContent = '0';
+  resultDisplay('decimal', '0');
 }
 function append(text, continueFromAnswer = false) {
   if (inputState !== 'editing') {
@@ -125,8 +286,8 @@ function calculate() {
     const value = evaluate(completed);
     expr = completed;
     ans = value;
-    const output = Number(value.toPrecision(12)).toString();
-    $('result').textContent = output;
+    const output = decimalText(value);
+    resultDisplay('decimal', output);
     inputState = 'answer';
     history.push([expr, output]);
     if (history.length > 100) history.shift();
@@ -136,13 +297,18 @@ function calculate() {
   }
   render();
 }
-function press(key) {
+function press(key, sub) {
   if (key === 'SHIFT' || key === 'ALPHA') {
     shift = key === 'SHIFT' && !shift;
     alpha = key === 'ALPHA' && !alpha;
     render();
     return;
   }
+  const shifted = shift;
+  const wasHyperbolic = hyperbolic;
+  shift = false;
+  alpha = false;
+  hyperbolic = false;
   if (key === 'ON') {
     startEditing('');
     render();
@@ -150,7 +316,6 @@ function press(key) {
   }
   if (key === 'MODE') {
     degree = !degree;
-    shift = false;
     render();
     return;
   }
@@ -164,11 +329,15 @@ function press(key) {
     deleteLast();
     return;
   }
-  if (['▶', '▲', '▼'].includes(key)) return;
-
-  const shifted = shift;
-  shift = false;
-  alpha = false;
+  if (['▶', '▲', '▼'].includes(key)) {
+    render();
+    return;
+  }
+  if (shifted && sub && !supportedShift.has(key)) {
+    $('result').textContent = '未実装';
+    render();
+    return;
+  }
   if (key === 'AC') {
     if (shifted) {
       history = [];
@@ -183,16 +352,23 @@ function press(key) {
     calculate();
     return;
   } else if (key === 'S⇔D') {
-    showDecimal = !showDecimal;
-    try {
-      $('result').textContent = String(inputState === 'answer' ? ans : evaluate(expr));
-    } catch {}
+    toggleFraction(shifted);
+  } else if (key === 'ENG') {
+    showEngineering(shifted);
+  } else if (key === '°′″') {
+    pressSexagesimal();
+  } else if (key === 'hyp') {
+    if (shifted) append('abs(');
+    else hyperbolic = !wasHyperbolic;
+  } else if (trigKeys.has(key)) {
+    append(key + (wasHyperbolic ? 'h' : '') + (shifted ? '⁻¹(' : '('));
   } else if (key === 'M+') {
     try {
-      memory += (shifted ? -1 : 1) * evaluate(expr);
+      const value = inputState === 'answer' ? ans : evaluate(expr);
+      memory += (shifted ? -1 : 1) * value;
     } catch {}
   } else if (key === 'RCL') {
-    if (shifted) memory = evaluate(expr);
+    if (shifted) memory = inputState === 'answer' ? ans : evaluate(expr);
     else append(String(memory));
   } else if (key === 'Ans') {
     if (shifted) degree = !degree;
@@ -200,9 +376,6 @@ function press(key) {
   } else {
     const functions = {
       '√': shifted ? '³√(' : '√(',
-      sin: shifted ? 'sin⁻¹(' : 'sin(',
-      cos: shifted ? 'cos⁻¹(' : 'cos(',
-      tan: shifted ? 'tan⁻¹(' : 'tan(',
       log: shifted ? '10ˣ(' : 'log(',
       ln: shifted ? 'eˣ(' : 'ln(',
       'x²': shifted ? '^3' : '^2',
@@ -219,9 +392,6 @@ function press(key) {
       'logₐ': 'log(',
       'a/b': '÷',
       'π': 'π',
-      hyp: '',
-      ENG: '',
-      '°′″': '',
       CALC: '',
       '∫': '',
     };
