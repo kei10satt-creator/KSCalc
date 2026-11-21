@@ -63,7 +63,7 @@ function applyOperator(operator, left, right) {
   }
 }
 
-function evaluateArithmetic(expression, {mode, radix, answer, constants, functions, factorial}) {
+function evaluateArithmetic(expression, {mode, radix, answer, constants, functions, factorial, syntaxOnly = false}) {
   // Parse once so numerical functions can evaluate their first argument for many X values.
   const sampledFunctions = {sum: 2, integral: 2, derivative: 1};
   let samples = 0;
@@ -168,6 +168,7 @@ function evaluateArithmetic(expression, {mode, radix, answer, constants, functio
 
   const formula = readExpression(1);
   if (position !== tokens.length) throw new SyntaxError();
+  if (syntaxOnly) return;
   const value = formula(constants);
   if (typeof value === 'number' && !Number.isFinite(value)) mathError();
   if (typeof value === 'object' && ![value.re, value.im].every(Number.isFinite)) mathError();
