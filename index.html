@@ -57,6 +57,9 @@ html,body{height:100%;overflow:hidden}body{height:100dvh}.calc{height:100dvh;min
 .key.alpha-key .secondary { display: none; }
 .expression { position: relative; white-space: nowrap; overflow-x: auto; scrollbar-width: none; }
 .expression::-webkit-scrollbar { display: none; }
+.screen-details { font-size: clamp(10px, 1.5dvh, 14px); overflow-x: auto; scrollbar-width: none; white-space: nowrap; }
+.screen-details::-webkit-scrollbar { display: none; }
+.screen-details { flex-shrink: 0; }
 .expression-caret { position: relative; display: inline-block; width: 0; height: 1em; vertical-align: -.12em; }
 .expression-caret::after { content: ''; position: absolute; inset: 0 auto 0 0; border-left: 2px solid #26372c; }
 .expression-caret.overwrite::after { border: 0; width: .52em; box-shadow: inset 0 -2px #26372c; }
@@ -64,7 +67,7 @@ html,body{height:100%;overflow:hidden}body{height:100dvh}.calc{height:100dvh;min
 .entry-form :is(input, select) { font: inherit; min-width: 0; padding: .36em; }
 .entry-form > div:last-child, .entry-form + form { margin-top: .55em; }
 @media(max-height:650px){.sub,.footer{display:none}.screen{flex-basis:14dvh}.calc{gap:2px}}
-</style></head><body><main class="calc"><div><div class="brand">CASIO <span style="float:right;font-size:12px">KS EDITION</span></div><div class="sub">fx-375ESA · NATURAL-V.P.A.M. inspired</div></div><div class="screen"><div class="status" id="status">DEG · COMP</div><div class="expression" id="expr"></div><div class="result" id="result">0</div></div><div class="history" id="history"></div><div class="top" id="top"></div><div class="keys"><div class="key-group function-keys" id="function-keys" role="group" aria-label="関数キー"></div><div class="key-group number-pad" id="number-pad" role="group" aria-label="テンキー"></div></div><div class="footer">v0.1.7 · 1画面表示 · オフライン対応 · 計算結果は近似値の場合があります</div></main>
+</style></head><body><main class="calc"><div><div class="brand">CASIO <span style="float:right;font-size:12px">KS EDITION</span></div><div class="sub">fx-375ESA · NATURAL-V.P.A.M. inspired</div></div><div class="screen"><div class="status" id="status">DEG · COMP ·Norm</div><div class="expression" id="expr"></div><div id="screen-details" class="screen-details" aria-live="polite" hidden></div><div class="result" id="result">0</div></div><div class="history" id="history"></div><div class="top" id="top"></div><div class="keys"><div class="key-group function-keys" id="function-keys" role="group" aria-label="関数キー"></div><div class="key-group number-pad" id="number-pad" role="group" aria-label="テンキー"></div></div><div class="footer">v0.1.8 · 1画面表示 · オフライン対応 · 計算結果は近似値の場合があります</div></main>
 <dialog id="statistics-panel" class="calculator-panel" aria-labelledby="statistics-title">
   <h2 id="statistics-title">STAT · 1変数統計</h2>
   <form id="statistics-form">
@@ -116,11 +119,11 @@ html,body{height:100%;overflow:hidden}body{height:100dvh}.calc{height:100dvh;min
   <form id="calc-form" class="entry-form">
     <div id="calc-fields"></div>
     <output id="calc-message" aria-live="polite"></output>
-    <div><button type="submit">計算</button></div>
+    <div><button type="submit" id="calc-submit">計算</button></div>
   </form>
   <form method="dialog"><button>閉じる</button></form>
 </dialog>
-<script src="./arithmetic.js"></script><script>
+<script src="./arithmetic.js?v=018"></script><script>
 const functionRows = [
   [['CALC', 'SOLVE'], ['∫', 'd/dx'], null, null, ['x⁻¹', 'x!'], ['logₐ', 'Σ']],
   [['a/b', 'a b/c'], ['√', '³√'], ['x²', 'x³'], ['xʸ', 'ʸ√x'], ['log', '10ˣ'], ['ln', 'eˣ']],
@@ -140,7 +143,7 @@ let resultFormat = 'decimal';
 let engineeringExponent = 0;
 const keyLabels = [];
 const trigKeys = new Set(['sin', 'cos', 'tan']);
-const supportedShift = new Set(['MODE', 'DEL', 'a/b', 'x⁻¹', '√', 'x²', 'log', 'ln', 'hyp', 'sin', 'cos', 'tan', 'RCL', 'ENG', '(', 'S⇔D', 'M+', '.', '×10ˣ', 'Ans', '0', '1', '2', '3', '+', '−', '×', '÷', ')', '7', '8', '9']);
+const supportedShift = new Set(['MODE', 'DEL', 'CALC', '∫', 'logₐ', 'a/b', 'x⁻¹', '√', 'x²', 'log', 'ln', 'hyp', 'sin', 'cos', 'tan', 'RCL', 'ENG', '(', 'S⇔D', 'M+', '.', '×10ˣ', 'Ans', '0', '1', '2', '3', '+', '−', '×', '÷', ')', '7', '8', '9']);
 let inputState = 'editing';
 const bases = {DEC: 10, HEX: 16, BIN: 2, OCT: 8};
 const baseSelectors = {'x²': 'DEC', 'xʸ': 'HEX', log: 'BIN', ln: 'OCT'};
@@ -198,6 +201,7 @@ function changeBase(next) {
   if (inputState === 'editing' && expr) calculate();
   if (inputState === 'error') return;
   baseName = next;
+  historyIndex = null;
   if (inputState === 'answer') {
     expr = '';
     resultDisplay('decimal', formatAnswer(ans));
@@ -267,7 +271,7 @@ function initializePanels() {
     ].join('\n');
   });
 }
-const alphaKeys = {...hexKeys, ')': 'X', 'S⇔D': 'Y', 'M+': 'M', '×10ˣ': 'e'};
+const alphaKeys = {...hexKeys, CALC: '＝', ')': 'X', 'S⇔D': 'Y', 'M+': 'M', '×10ˣ': 'e'};
 const variables = Object.fromEntries([...'ABCDEFXY'].map(name => [name, 0]));
 const units = {
   length: {mm: 0.001, cm: 0.01, m: 1, km: 1000, in: 0.0254, ft: 0.3048},
@@ -276,6 +280,10 @@ const units = {
 let cursor = 0;
 let overwrite = false;
 let calcFields = [];
+let solving = false;
+let resultAssignments = {};
+let historyIndex = null;
+let historyDraft;
 
 function readNumber(input) {
   const value = input.value.trim().replace(/−/g, '-');
@@ -309,16 +317,24 @@ function openConversion() {
   $('conversion-panel').showModal();
 }
 
-function openCalc() {
+function openCalc(solve = false) {
   const names = [...new Set(expr.match(/[A-Za-z]+/g) || [])].filter(name => Object.hasOwn(variables, name));
+  if (solve && (mode !== 'COMP' || !names.includes('X'))) {
+    $('result').textContent = mode === 'COMP' ? '式に X を入力してください' : 'COMPで使用してください';
+    return;
+  }
   if (!names.length) {
     calculate();
     return;
   }
+  solving = solve;
+  $('calc-title').textContent = solving ? 'SOLVE · Xを求める' : 'CALC · 変数に代入';
+  $('calc-submit').textContent = solving ? '解を求める' : '計算';
+  if (solving) names.push(names.splice(names.indexOf('X'), 1)[0]);
   calcFields = names.map(name => {
     const label = document.createElement('label');
     const input = document.createElement('input');
-    label.textContent = name + ' ';
+    label.textContent = solving && name === 'X' ? 'Xの初期値 ' : name + ' ';
     input.inputMode = 'decimal';
     input.required = true;
     input.value = String(variables[name]);
@@ -403,14 +419,30 @@ function initializeEditingPanels() {
       return;
     }
     try {
-      const completed = completeExpression(expr);
-      const value = evaluate(completed, {...variables, ...assignments});
-      Object.assign(variables, assignments);
-      saveAnswer(completed, value);
+      if (solving) {
+        const sides = expr.split('＝');
+        if (sides.length > 2 || sides.some(side => !side.trim())) throw new SyntaxError();
+        const [left, right = '0'] = sides.map(completeExpression);
+        const sample = x => [left, right].map(side => {
+          const value = evaluate(side, {...variables, ...assignments, X: x});
+          if (!Number.isFinite(value)) mathError();
+          return value;
+        });
+        const {X: initial, ...known} = assignments;
+        const root = solveEquation(sample, initial);
+        Object.assign(variables, known, {X: root});
+        saveAnswer(sides.length === 2 ? left + '＝' + right : left, root, known, 'X=');
+      } else {
+        const completed = completeExpression(expr);
+        const value = evaluate(completed, {...variables, ...assignments});
+        Object.assign(variables, assignments);
+        saveAnswer(completed, value, assignments);
+      }
       $('calc-panel').close();
       render();
     } catch (error) {
-      $('calc-message').textContent = error.message === 'Math ERROR' ? 'Math ERROR' : '式エラー';
+      $('calc-message').textContent = error.message !== 'Math ERROR' ? '式エラー'
+        : solving ? '解が求められません。式とXの初期値を確認してください。' : 'Math ERROR';
     }
   });
 }
@@ -459,7 +491,11 @@ function render() {
       expressionDisplay.scrollLeft = caret.offsetLeft - expressionDisplay.clientWidth + 12;
     }
   }
-  $('status').textContent = setupPage ? 'SETUP · ACで戻る' : `${shift ? 'SHIFT · ' : ''}${alpha ? 'ALPHA · ' : ''}${hyperbolic ? 'HYP · ' : ''}${mode === 'BASE' ? baseName : degree ? 'DEG' : 'RAD'} · ${mode}${fixDigits !== null && mode !== 'BASE' ? ' · FIX ' + fixDigits : ''}${overwrite ? ' · 上書き' : ''}`;
+  $('status').textContent = setupPage ? 'SETUP · ACで戻る' : `${shift ? 'SHIFT · ' : ''}${alpha ? 'ALPHA · ' : ''}${hyperbolic ? 'HYP · ' : ''}${mode === 'BASE' ? baseName : degree ? 'DEG' : 'RAD'} · ${mode}${mode === 'BASE' ? '' : fixDigits === null ? ' ·Norm' : ' ·FIX ' + fixDigits}${overwrite ? ' · 上書き' : ''}`;
+  const details = !setupPage && inputState === 'answer'
+    ? Object.entries(resultAssignments).map(([name, value]) => name + '=' + String(value)).join('　') : '';
+  $('screen-details').textContent = details;
+  $('screen-details').hidden = !details;
   for (const {button, key, sub, primary, secondary} of keyLabels) {
     const hypTrig = hyperbolic && trigKeys.has(key);
     const baseLabel = mode === 'BASE' && (baseSelectors[key] || (baseName === 'HEX' && hexKeys[key]));
@@ -493,6 +529,11 @@ function evaluate(expression, currentVariables = variables) {
     sinh: Math.sinh, cosh: Math.cosh, tanh: Math.tanh,
     asinh: Math.asinh, acosh: Math.acosh, atanh: Math.atanh,
     sqrt: Math.sqrt, cbrt: Math.cbrt, ln: Math.log, log: Math.log10,
+    logBase: (base, value) => {
+      if (!(base > 0) || base === 1 || !(value > 0)) mathError();
+      return Math.log(value) / Math.log(base);
+    },
+    sum: sumValues, integral: integrateBetween, derivative: derivativeAt,
     powten: value => 10 ** value, exp: Math.exp, abs: Math.abs, Rnd: roundNumber,
     Pol: (x, y) => ({re: Math.hypot(x, y), im: angle(Math.atan2(y, x)), coordinates: 'polar'}),
     Rec: (radius, direction) => ({re: radius * Math.cos(radians(direction)),
@@ -503,6 +544,7 @@ function evaluate(expression, currentVariables = variables) {
   const withoutLeadingZeroes = value => value.replace(/^0+(?=\d)/, '');
   const callableNames = {
     '√': 'sqrt', '³√': 'cbrt', '10ˣ': 'powten', 'eˣ': 'exp', log: 'log',
+    'logₐ': 'logBase', 'Σ': 'sum', '∫': 'integral', 'd/dx': 'derivative',
     'sin⁻¹': 'asin', 'cos⁻¹': 'acos', 'tan⁻¹': 'atan',
     'sinh⁻¹': 'asinh', 'cosh⁻¹': 'acosh', 'tanh⁻¹': 'atanh',
   };
@@ -511,7 +553,7 @@ function evaluate(expression, currentVariables = variables) {
       `(${whole}+${numerator}÷${denominator})`)
     .replace(sexagesimal, (_, d, m = '0', s = '0') =>
       `(${withoutLeadingZeroes(d)}+${withoutLeadingZeroes(m)}÷60+${withoutLeadingZeroes(s)}÷3600)`)
-    .replace(/(³√|√|10ˣ|eˣ|log|(?:sin|cos|tan)h?⁻¹)\(/g, (_, name) => callableNames[name] + '(');
+    .replace(/(³√|√|10ˣ|eˣ|logₐ|log|Σ|∫|d\/dx|(?:sin|cos|tan)h?⁻¹)\(/g, (_, name) => callableNames[name] + '(');
   return evaluateArithmetic(translated, {mode, radix: bases[baseName], answer: ans,
     constants: mode === 'BASE' ? {} : {...constants, ...currentVariables, M: memory, e: Math.E}, functions: mode === 'BASE' ? {} : functions, factorial});
 }
@@ -611,7 +653,9 @@ function pressSexagesimal() {
   if (marks.length < 3 && /\d(?:\.\d*)?$/.test(term)) append('°′″'[marks.length]);
 }
 const answerContinuationKeys = new Set(['+', '−', '×', '÷', 'a/b', 'x²', 'xʸ', 'x⁻¹', '×10ˣ']);
-function startEditing(expression) {
+function startEditing(expression, recalling = false) {
+  if (!recalling) historyIndex = null;
+  resultAssignments = {};
   expr = expression;
   cursor = expression.length;
   inputState = 'editing';
@@ -621,8 +665,15 @@ function append(text, continueFromAnswer = false) {
   if (inputState !== 'editing') {
     startEditing(inputState === 'answer' && continueFromAnswer ? 'Ans' : '');
   }
-  expr = expr.slice(0, cursor) + text + expr.slice(cursor + (overwrite ? 1 : 0));
+  const replace = expr[cursor] === '□' || (overwrite && !',)'.includes(expr[cursor] || ')'));
+  expr = expr.slice(0, cursor) + text + expr.slice(cursor + Number(replace));
   cursor += text.length;
+  render();
+}
+function appendTemplate(name, fields) {
+  const prefix = name + '(';
+  append(prefix + Array(fields).fill('□').join(',') + ')');
+  cursor -= fields * 2;
   render();
 }
 function deleteLast() {
@@ -641,6 +692,26 @@ function moveCursor(direction) {
   } else cursor = Math.min(expr.length, Math.max(0, cursor + direction));
   render();
 }
+function recallExpression(direction) {
+  let index = (historyIndex ?? history.length) + direction;
+  if (historyIndex === null && direction > 0) return;
+  while (index >= 0 && index < history.length) {
+    const entry = history[index];
+    if (entry.mode === mode && (mode !== 'BASE' || entry.base === baseName)) {
+      if (historyIndex === null) historyDraft = {expr, cursor, inputState, resultFormat,
+        output: $('result').textContent, resultAssignments};
+      historyIndex = index;
+      startEditing(entry.expression, true);
+      return;
+    }
+    index += direction;
+  }
+  if (index >= history.length && historyDraft) {
+    ({expr, cursor, inputState, resultAssignments} = historyDraft);
+    resultDisplay(historyDraft.resultFormat, historyDraft.output);
+    historyIndex = null;
+  }
+}
 function completeExpression(expression) {
   let open = 0;
   for (const character of expression) {
@@ -652,7 +723,9 @@ function completeExpression(expression) {
   }
   return expression + ')'.repeat(open);
 }
-function saveAnswer(completed, value) {
+function saveAnswer(completed, value, assignments = {}, prefix = '') {
+  historyIndex = null;
+  resultAssignments = assignments;
   expr = completed;
   cursor = expr.length;
   const coordinates = typeof value === 'object' && value.coordinates;
@@ -660,17 +733,17 @@ function saveAnswer(completed, value) {
   const labels = coordinates === 'polar' ? ['r', 'θ'] : ['x', 'y'];
   const output = coordinates
     ? `${labels[0]}=${decimalText(value.re)}  ${labels[1]}=${decimalText(value.im)}`
-    : formatAnswer(value);
+    : prefix + formatAnswer(value);
   resultDisplay(coordinates ? 'coordinates' : 'decimal', output);
   inputState = 'answer';
-  history.push([expr, output]);
+  if (expr) history.push({expression: expr, output, mode, base: baseName});
   if (history.length > 100) history.shift();
 }
 function calculate() {
   try {
     const completed = completeExpression(expr || (inputState === 'answer' ? 'Ans' : ''));
     const value = evaluate(completed);
-    saveAnswer(completed, value);
+    saveAnswer(completed, value, completed === expr ? resultAssignments : {});
   } catch (error) {
     $('result').textContent = error.message === 'Math ERROR' ? 'Math ERROR' : '式エラー';
     inputState = 'error';
@@ -707,7 +780,11 @@ function press(key, sub) {
   if (key === 'HIST') {
     const panel = $('history');
     panel.classList.toggle('show');
-    panel.innerHTML = history.slice(-12).reverse().map(h => `<div>${h[0]} = ${h[1]}</div>`).join('');
+    panel.replaceChildren(...history.slice(-12).reverse().map(({expression, output}) => {
+      const row = document.createElement('div');
+      row.textContent = expression + ' = ' + output;
+      return row;
+    }));
     return;
   }
   if (key === '◀' || key === '▶') {
@@ -715,6 +792,7 @@ function press(key, sub) {
     return;
   }
   if (['▲', '▼'].includes(key)) {
+    recallExpression(key === '▲' ? -1 : 1);
     render();
     return;
   }
@@ -768,7 +846,11 @@ function press(key, sub) {
   if (key === 'AC') {
     startEditing('');
   } else if (key === 'CALC') {
-    openCalc();
+    openCalc(shifted);
+  } else if (key === 'logₐ' || key === '∫') {
+    const name = key === '∫' ? (shifted ? 'd/dx' : '∫') : (shifted ? 'Σ' : 'logₐ');
+    appendTemplate(name, name === 'd/dx' || name === 'logₐ' ? 2 : 3);
+    return;
   } else if (key === 'DEL') {
     deleteLast();
     return;
@@ -818,22 +900,17 @@ function press(key, sub) {
       '−': shifted ? 'Rec(' : '−',
       '+': shifted ? 'Pol(' : '+',
       '×10ˣ': shifted ? 'π' : '×10^',
-      'logₐ': 'log(',
       'a/b': '÷',
       'π': 'π',
       '0': shifted ? 'Rnd(' : '0',
-      '∫': '',
     };
     if (key === '.' && shifted) {
       append(String(Math.random()));
       return;
     }
     if (Object.hasOwn(functions, key)) {
-      if (functions[key]) {
-        append(functions[key], !['π', 'Pol(', 'Rec('].includes(functions[key]) && (answerContinuationKeys.has(key) || functions[key] === '%'));
-        return;
-      }
-      $('result').textContent = '未実装';
+      append(functions[key], !['π', 'Pol(', 'Rec('].includes(functions[key]) && (answerContinuationKeys.has(key) || functions[key] === '%'));
+      return;
     } else if (/^[0-9.]$/.test(key)) {
       append(key);
       return;

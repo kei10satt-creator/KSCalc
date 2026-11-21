@@ -64,6 +64,15 @@ function applyOperator(operator, left, right) {
 }
 
 function evaluateArithmetic(expression, {mode, radix, answer, constants, functions, factorial}) {
+  // Parse once so numerical functions can evaluate their first argument for many X values.
+  const sampledFunctions = {sum: 2, integral: 2, derivative: 1};
+  let samples = 0;
+  function sample(expression, scope, x) {
+    if (++samples > 50000) mathError();
+    const value = expression({...scope, X: x});
+    if (!Number.isFinite(value)) mathError();
+    return value;
+  }
   const tokenPattern = mode === 'BASE'
     ? /Ans|[0-9A-F]+|[+−×÷()]|\s+/gy
     : /(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?|[A-Za-z]+|[π+−×÷^!%(),]|\s+/gy;
@@ -90,11 +99,14 @@ function evaluateArithmetic(expression, {mode, radix, answer, constants, functio
     if (token === '−' || token === '+') {
       const value = readExpression(4);
       if (token === '+') return value;
-      if (value?.coordinates) throw new SyntaxError();
-      if (typeof value === 'object') return {re: -value.re, im: -value.im};
-      return -value;
+      return scope => {
+        const operand = value(scope);
+        if (operand?.coordinates) throw new SyntaxError();
+        if (typeof operand === 'object') return {re: -operand.re, im: -operand.im};
+        return -operand;
+      };
     }
-    if (token === 'Ans') return answer;
+    if (token === 'Ans') return () => answer;
     if (mode === 'BASE' && /^[0-9A-F]+$/.test(token)) {
       const base = BigInt(radix);
       let result = 0n;
@@ -103,11 +115,11 @@ function evaluateArithmetic(expression, {mode, radix, answer, constants, functio
         if (digit >= radix) throw new SyntaxError();
         result = result * base + BigInt(digit);
       }
-      return result;
+      return () => result;
     }
-    if (mode !== 'BASE' && /^(?:\d|\.\d)/.test(token)) return Number(token);
-    if (token === 'i' && mode === 'CMPLX') return {re: 0, im: 1};
-    if (Object.hasOwn(constants, token)) return constants[token];
+    if (mode !== 'BASE' && /^(?:\d|\.\d)/.test(token)) return () => Number(token);
+    if (token === 'i' && mode === 'CMPLX') return () => ({re: 0, im: 1});
+    if (Object.hasOwn(constants, token)) return scope => scope[token];
     if (!Object.hasOwn(functions, token)) throw new SyntaxError();
     expect('(');
     const args = [readExpression(1)];
@@ -117,8 +129,17 @@ function evaluateArithmetic(expression, {mode, radix, answer, constants, functio
     }
     expect(')');
     const callable = functions[token];
-    if (args.length !== callable.length || args.some(value => typeof value !== 'number')) throw new SyntaxError();
-    return callable(...args);
+    if (Object.hasOwn(sampledFunctions, token)) {
+      const [formula, ...parameters] = args;
+      if (parameters.length !== sampledFunctions[token]) throw new SyntaxError();
+      return scope => callable(x => sample(formula, scope, x), ...parameters.map(parameter => parameter(scope)));
+    }
+    if (args.length !== callable.length) throw new SyntaxError();
+    return scope => {
+      const values = args.map(argument => argument(scope));
+      if (values.some(value => typeof value !== 'number')) throw new SyntaxError();
+      return callable(...values);
+    };
   }
 
   function readExpression(minimum) {
@@ -130,20 +151,111 @@ function evaluateArithmetic(expression, {mode, radix, answer, constants, functio
       const precedence = Object.hasOwn(operatorPrecedence, operator) ? operatorPrecedence[operator] : 0;
       if (!precedence || precedence < minimum) break;
       if (!imaginaryFactor) position++;
+      const previous = left;
       if (operator === '!' || operator === '%') {
-        if (typeof left !== 'number') mathError();
-        left = operator === '!' ? factorial(left) : left / 100;
+        left = scope => {
+          const value = previous(scope);
+          if (typeof value !== 'number') mathError();
+          return operator === '!' ? factorial(value) : value / 100;
+        };
       } else {
         const right = readExpression(operator === '^' ? precedence : precedence + 1);
-        left = applyOperator(operator, left, right);
+        left = scope => applyOperator(operator, previous(scope), right(scope));
       }
     }
     return left;
   }
 
-  const value = readExpression(1);
+  const formula = readExpression(1);
   if (position !== tokens.length) throw new SyntaxError();
+  const value = formula(constants);
   if (typeof value === 'number' && !Number.isFinite(value)) mathError();
   if (typeof value === 'object' && ![value.re, value.im].every(Number.isFinite)) mathError();
   return value;
+}
+
+function sumValues(sample, first, last) {
+  if (![first, last].every(Number.isSafeInteger) || last < first || last - first >= 10000) mathError();
+  let total = 0;
+  let correction = 0;
+  for (let x = first; x <= last; x++) {
+    const term = sample(x) - correction;
+    const next = total + term;
+    correction = (next - total) - term;
+    total = next;
+  }
+  return total;
+}
+
+function derivativeAt(sample, x) {
+  if (!Number.isFinite(x)) mathError();
+  // Compare estimates from both sides to catch corners such as |X| at zero.
+  const step = Math.max(1, Math.abs(x)) * 1e-4;
+  const center = sample(x);
+  const secondOrder = (near, far) => (4 * (near - center) - (far - center)) / step;
+  const right = secondOrder(sample(x + step / 2), sample(x + step));
+  const left = -secondOrder(sample(x - step / 2), sample(x - step));
+  if (Math.abs(left - right) > 1e-6 * Math.max(1, Math.abs(left), Math.abs(right))) mathError();
+  return (left + right) / 2;
+}
+
+function integrateBetween(sample, lower, upper) {
+  if (![lower, upper].every(Number.isFinite)) mathError();
+  if (lower === upper) return 0;
+  const simpson = (a, b, left, middle, right) =>
+    (b - a) * (left / 6 + middle * (2 / 3) + right / 6);
+  function refine(a, b, left, middle, right, estimate, tolerance, depth) {
+    const mid = a + (b - a) / 2;
+    if (mid === a || mid === b) return estimate;
+    const first = sample(a + (mid - a) / 2);
+    const second = sample(mid + (b - mid) / 2);
+    const integralLeft = simpson(a, mid, left, first, middle);
+    const integralRight = simpson(mid, b, middle, second, right);
+    const delta = integralLeft + integralRight - estimate;
+    if (Math.abs(delta) <= 15 * tolerance) return integralLeft + integralRight + delta / 15;
+    if (!depth) mathError();
+    return refine(a, mid, left, first, middle, integralLeft, tolerance / 2, depth - 1) +
+      refine(mid, b, middle, second, right, integralRight, tolerance / 2, depth - 1);
+  }
+  const left = sample(lower);
+  const right = sample(upper);
+  // Seed several intervals to catch variation missed by a single three-point estimate.
+  let total = 0;
+  let a = lower;
+  let start = left;
+  for (let index = 1; index <= 8; index++) {
+    const b = index === 8 ? upper : lower + (upper - lower) * (index / 8);
+    const end = index === 8 ? right : sample(b);
+    const mid = sample(a + (b - a) / 2);
+    const estimate = simpson(a, b, start, mid, end);
+    total += refine(a, b, start, mid, end, estimate, 1e-11 * Math.max(1, Math.abs(estimate)), 18);
+    a = b;
+    start = end;
+  }
+  return total;
+}
+
+function solveEquation(sample, initial) {
+  let x = initial;
+  for (let iteration = 0; iteration < 100; iteration++) {
+    const [left, right] = sample(x);
+    const difference = left - right;
+    if (difference === 0) return x;
+    const step = Math.max(1, Math.abs(x)) * 1e-5;
+    const residual = ([a, b]) => a - b;
+    const slope = (residual(sample(x + step)) - residual(sample(x - step))) / (2 * step);
+    if (!Number.isFinite(slope)) mathError();
+    // Move off a stationary initial point to give Newton's method a direction.
+    if (slope === 0) {
+      x += step;
+      continue;
+    }
+    const correction = difference / slope;
+    const next = x - correction;
+    if (!Number.isFinite(next)) mathError();
+    if (Math.abs(correction) <= 1e-12 * Math.max(1, Math.abs(x)) &&
+        Math.abs(difference) <= 1e-10 * Math.max(Math.abs(left), Math.abs(right), 1)) return next;
+    x = next;
+  }
+  mathError();
 }
