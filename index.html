@@ -67,7 +67,7 @@ html,body{height:100%;overflow:hidden}body{height:100dvh}.calc{height:100dvh;min
 .entry-form :is(input, select) { font: inherit; min-width: 0; padding: .36em; }
 .entry-form > div:last-child, .entry-form + form { margin-top: .55em; }
 @media(max-height:650px){.sub,.footer{display:none}.screen{flex-basis:14dvh}.calc{gap:2px}}
-</style></head><body><main class="calc"><div><div class="brand">CASIO <span style="float:right;font-size:12px">KS EDITION</span></div><div class="sub">fx-375ESA · NATURAL-V.P.A.M. inspired</div></div><div class="screen"><div class="status" id="status">DEG · COMP ·Norm</div><div class="expression" id="expr"></div><div id="screen-details" class="screen-details" aria-live="polite" hidden></div><div class="result" id="result">0</div></div><div class="history" id="history"></div><div class="top" id="top"></div><div class="keys"><div class="key-group function-keys" id="function-keys" role="group" aria-label="関数キー"></div><div class="key-group number-pad" id="number-pad" role="group" aria-label="テンキー"></div></div><div class="footer">v0.1.8 · 1画面表示 · オフライン対応 · 計算結果は近似値の場合があります</div></main>
+</style></head><body><main class="calc"><div><div class="brand">CASIO <span style="float:right;font-size:12px">KS EDITION</span></div><div class="sub">fx-375ESA · NATURAL-V.P.A.M. inspired</div></div><div class="screen"><div class="status" id="status">角度 · COMP ·Norm</div><div class="expression" id="expr"></div><div id="screen-details" class="screen-details" aria-live="polite" hidden></div><div class="result" id="result">0</div></div><div class="history" id="history"></div><div class="top" id="top"></div><div class="keys"><div class="key-group function-keys" id="function-keys" role="group" aria-label="関数キー"></div><div class="key-group number-pad" id="number-pad" role="group" aria-label="テンキー"></div></div><div class="footer">v0.1.9 · 1画面表示 · オフライン対応 · 計算結果は近似値の場合があります</div></main>
 <dialog id="statistics-panel" class="calculator-panel" aria-labelledby="statistics-title">
   <h2 id="statistics-title">STAT · 1変数統計</h2>
   <form id="statistics-form">
@@ -137,7 +137,12 @@ const numberRows = [
   [['0', 'Rnd'], ['.', 'Ran#'], ['×10ˣ', 'π'], ['Ans', 'DRG'], ['=', '']],
 ];
 const topKeys = [['SHIFT', ''], ['ALPHA', ''], ['▲', ''], ['MODE', 'SETUP'], ['◀', ''], ['▼', ''], ['▶', '']];
-const $=id=>document.getElementById(id);let expr='',ans=0,shift=false,alpha=false,degree=true,memory=0,history=[];
+const $=id=>document.getElementById(id);let expr='',ans=0,shift=false,alpha=false,memory=0,history=[];
+const angleUnits = ['角度', 'ラジアン', '勾配'];
+let angleUnit = 0;
+function cycleAngleUnit() {
+  angleUnit = (angleUnit + 1) % angleUnits.length;
+}
 let hyperbolic = false;
 let resultFormat = 'decimal';
 let engineeringExponent = 0;
@@ -372,7 +377,7 @@ function initializeEditingPanels() {
     event.preventDefault();
     const target = $('clear-target').value;
     if (target !== 'memory') {
-      degree = true;
+      angleUnit = 0;
       fixDigits = null;
       overwrite = false;
       mode = 'COMP';
@@ -491,7 +496,7 @@ function render() {
       expressionDisplay.scrollLeft = caret.offsetLeft - expressionDisplay.clientWidth + 12;
     }
   }
-  $('status').textContent = setupPage ? 'SETUP · ACで戻る' : `${shift ? 'SHIFT · ' : ''}${alpha ? 'ALPHA · ' : ''}${hyperbolic ? 'HYP · ' : ''}${mode === 'BASE' ? baseName : degree ? 'DEG' : 'RAD'} · ${mode}${mode === 'BASE' ? '' : fixDigits === null ? ' ·Norm' : ' ·FIX ' + fixDigits}${overwrite ? ' · 上書き' : ''}`;
+  $('status').textContent = setupPage ? 'SETUP · ACで戻る' : `${shift ? 'SHIFT · ' : ''}${alpha ? 'ALPHA · ' : ''}${hyperbolic ? 'HYP · ' : ''}${mode === 'BASE' ? baseName : angleUnits[angleUnit]} · ${mode}${mode === 'BASE' ? '' : fixDigits === null ? ' ·Norm' : ' ·FIX ' + fixDigits}${overwrite ? ' · 上書き' : ''}`;
   const details = !setupPage && inputState === 'answer'
     ? Object.entries(resultAssignments).map(([name, value]) => name + '=' + String(value)).join('　') : '';
   $('screen-details').textContent = details;
@@ -517,15 +522,22 @@ function factorial(value) {
 }
 function evaluate(expression, currentVariables = variables) {
   if (!expression.trim()) return mode === 'BASE' ? 0n : 0;
-  const radians = value => degree ? value * Math.PI / 180 : value;
-  const angle = value => degree ? value * 180 / Math.PI : value;
+  const slope = angleUnits[angleUnit] === '勾配';
+  // Coordinate directions retain a full circle, with degrees in slope mode.
+  const radians = value => angleUnits[angleUnit] === 'ラジアン' ? value : value * Math.PI / 180;
+  const angle = value => angleUnits[angleUnit] === 'ラジアン' ? value : value * 180 / Math.PI;
+  const unitCircleLeg = value => Math.sqrt((1 - value) * (1 + value));
   const functions = {
-    sin: value => Math.sin(radians(value)),
-    cos: value => Math.cos(radians(value)),
-    tan: value => Math.tan(radians(value)),
-    asin: value => angle(Math.asin(value)),
-    acos: value => angle(Math.acos(value)),
-    atan: value => angle(Math.atan(value)),
+    sin: value => slope ? value / Math.hypot(1, value) : Math.sin(radians(value)),
+    cos: value => slope ? 1 / Math.hypot(1, value) : Math.cos(radians(value)),
+    tan: value => slope ? value : Math.tan(radians(value)),
+    asin: value => slope ? value / unitCircleLeg(value) : angle(Math.asin(value)),
+    acos: value => {
+      if (!slope) return angle(Math.acos(value));
+      if (!(value > 0 && value <= 1)) mathError();
+      return unitCircleLeg(value) / value;
+    },
+    atan: value => slope ? value : angle(Math.atan(value)),
     sinh: Math.sinh, cosh: Math.cosh, tanh: Math.tanh,
     asinh: Math.asinh, acosh: Math.acosh, atanh: Math.atanh,
     sqrt: Math.sqrt, cbrt: Math.cbrt, ln: Math.log, log: Math.log10,
@@ -548,6 +560,7 @@ function evaluate(expression, currentVariables = variables) {
     'sin⁻¹': 'asin', 'cos⁻¹': 'acos', 'tan⁻¹': 'atan',
     'sinh⁻¹': 'asinh', 'cosh⁻¹': 'acosh', 'tanh⁻¹': 'atanh',
   };
+  if (slope && /[°′″]/.test(expression)) mathError();
   const translated = expression
     .replace(/(\d+) (\d+)⁄(\d+)/g, (_, whole, numerator, denominator) =>
       `(${whole}+${numerator}÷${denominator})`)
@@ -639,6 +652,7 @@ function showEngineering(reverse) {
   resultDisplay('engineering', `${coefficient} × 10${superscript}`);
 }
 function pressSexagesimal() {
+  if (angleUnits[angleUnit] === '勾配') return;
   if (inputState === 'answer') {
     if (typeof ans !== 'number' || resultFormat === 'coordinates') return;
     if (resultFormat === 'sexagesimal') resultDisplay('decimal', decimalText(ans));
@@ -730,7 +744,7 @@ function saveAnswer(completed, value, assignments = {}, prefix = '') {
   cursor = expr.length;
   const coordinates = typeof value === 'object' && value.coordinates;
   ans = coordinates ? value.re : value;
-  const labels = coordinates === 'polar' ? ['r', 'θ'] : ['x', 'y'];
+  const labels = coordinates === 'polar' ? ['r', angleUnits[angleUnit] === '勾配' ? 'θ°' : 'θ'] : ['x', 'y'];
   const output = coordinates
     ? `${labels[0]}=${decimalText(value.re)}  ${labels[1]}=${decimalText(value.im)}`
     : prefix + formatAnswer(value);
@@ -773,7 +787,7 @@ function press(key, sub) {
   }
   if (key === 'MODE') {
     if (shifted) setupPage = 'menu';
-    else if (mode !== 'BASE') degree = !degree;
+    else if (mode !== 'BASE') cycleAngleUnit();
     render();
     return;
   }
@@ -882,7 +896,7 @@ function press(key, sub) {
       } catch {}
     } else append(String(memory).replace(/^-/, '−'));
   } else if (key === 'Ans') {
-    if (shifted) degree = !degree;
+    if (shifted) cycleAngleUnit();
     else append('Ans');
   } else {
     const functions = {
