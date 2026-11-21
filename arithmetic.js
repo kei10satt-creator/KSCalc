@@ -75,7 +75,7 @@ function evaluateArithmetic(expression, {mode, radix, answer, constants, functio
   }
   const tokenPattern = mode === 'BASE'
     ? /Ans|[0-9A-F]+|[+−×÷()]|\s+/gy
-    : /(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?|[A-Za-z]+|[π+−×÷^!%(),]|\s+/gy;
+    : /(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?|L[123](?![A-Za-z0-9])|[A-Za-z]+|[π+−×÷^!%(),]|\s+/gy;
   const tokens = [];
   while (tokenPattern.lastIndex < expression.length) {
     const match = tokenPattern.exec(expression);
