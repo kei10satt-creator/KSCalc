@@ -75,6 +75,8 @@ function toggleKSMode() {
   if (ksSession) {
     const result = $('result');
     result.textContent = ksSession.normalOutput;
+    delete result.dataset.ksValue;
+    $('ks-entry-hint').hidden = true;
     if (ksSession.normalFormat !== undefined) result.dataset.format = ksSession.normalFormat;
     ksSession = null;
   } else {
@@ -104,26 +106,34 @@ function renderKSMode() {
     (fixDigits === null ? ' · Norm' : ' · FIX ' + fixDigits) + ' · KS MODE';
   $('ks-caption').textContent = caption;
   $('ks-caption').hidden = !caption;
-  let text = (formula?.symbol ? formula.symbol + ' = ' : '') + (choosing ? formula.expression : state.text);
-  let caret = state.page === 'edit' ? text.length - state.text.length + state.cursor : null;
+  const text = (formula?.symbol ? formula.symbol + ' = ' : '') + (choosing ? formula.expression : state.text);
+  const caret = state.page === 'edit' ? text.length - state.text.length + state.cursor : null;
   let details = state.note || (unchanged ? formula.note : '') || '';
-  let output = state.output || '';
+  const enteringValue = state.page === 'values';
+  const result = $('result');
+  const hint = $('ks-entry-hint');
+  hint.hidden = !enteringValue;
   if (choosing) {
     details = state.page === 'delete' ? '削除しますか？　＝ 確定　AC 取消'
       : (state.selection + 1) + '/' + state.items.length + '　▲▼ 選択　＝ 決定' + (formula.id ? '　DEL 削除' : '');
-  } else if (state.page === 'values') {
+  } else if (enteringValue) {
     const symbol = state.fields[state.fieldIndex];
     const info = Object.hasOwn(formula?.variables || {}, symbol) ? formula.variables[symbol] : {};
     details = [symbol, info.label, info.unit ? '[' + info.unit + ']' : ''].filter(Boolean).join(' ') +
       '　' + (state.fieldIndex + 1) + '/' + state.fields.length;
-    text = state.valueText;
-    caret = state.valueCursor;
-    output = state.note || '＝ 確定';
+    hint.textContent = state.note || '＝ 確定';
+    // Keep the formula's horizontal scroll position while entering values.
+    if (!Object.hasOwn(result.dataset, 'ksValue') || $('expr').textContent !== text) renderExpression(text);
+    result.dataset.ksValue = '';
+    renderExpression(state.valueText, state.valueCursor, false, result);
   }
-  renderExpression(text, caret);
+  if (!enteringValue) {
+    delete result.dataset.ksValue;
+    renderExpression(text, caret);
+    result.textContent = state.output || '';
+  }
   $('screen-details').textContent = details;
   $('screen-details').hidden = !details;
-  $('result').textContent = output;
   for (const {button, key, primary, secondary} of keyLabels) {
     const label = ksKeyLabel(key);
     primary.textContent = label;

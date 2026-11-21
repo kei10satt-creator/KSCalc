@@ -12,3 +12,10 @@
 #ks-extra-variables { justify-content: flex-start; }
 #ks-extra-variables:not(:empty) { margin-bottom: .5em; }
 .ks-meta > label { flex: 1 1 8em; min-width: 0; }
+
+.screen-output { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.screen-output .result { flex: 1; min-width: 0; }
+#ks-entry-hint { flex: 0 1 auto; max-width: 55%; font-size: clamp(9px, 1.45dvh, 12px); }
+#result[data-ks-value] { position: relative; font-variant-numeric: tabular-nums; white-space: nowrap; overflow-x: auto; scrollbar-width: none; padding-right: 4px; }
+#result[data-ks-value]::-webkit-scrollbar { display: none; }
+.screen:has(#result[data-ks-value]) { flex-basis: clamp(106px, 17dvh, 145px); }

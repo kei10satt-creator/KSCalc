@@ -1,5 +1,5 @@
-const CACHE_NAME = 'kscalc-v021';
-const ASSETS = ['./', './index.html', './arithmetic.js?v=021', './ks-mode.js?v=021', './ks-mode.css?v=021', './manifest.webmanifest', './icon.png', './icon-512.png'];
+const CACHE_NAME = 'kscalc-v022';
+const ASSETS = ['./', './index.html', './arithmetic.js?v=022', './ks-mode.js?v=022', './ks-mode.css?v=022', './manifest.webmanifest', './icon.png', './icon-512.png'];
 const assetUrls = new Set(ASSETS.map(path => new URL(path, self.registration.scope).href));
 
 self.addEventListener('install', event => {
@@ -12,7 +12,7 @@ self.addEventListener('install', event => {
 
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {
-    await Promise.all(['kscalc-v010', 'kscalc-v011', 'kscalc-v012', 'kscalc-v013', 'kscalc-v014', 'kscalc-v015', 'kscalc-v016', 'kscalc-v017', 'kscalc-v018', 'kscalc-v019', 'kscalc-v020'].map(name => caches.delete(name)));
+    await Promise.all(['kscalc-v010', 'kscalc-v011', 'kscalc-v012', 'kscalc-v013', 'kscalc-v014', 'kscalc-v015', 'kscalc-v016', 'kscalc-v017', 'kscalc-v018', 'kscalc-v019', 'kscalc-v020', 'kscalc-v021'].map(name => caches.delete(name)));
     await self.clients.claim();
   })());
 });
