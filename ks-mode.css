@@ -1,35 +1,14 @@
-.calculator-panel.ks-panel {
-  width: min(94vw, 420px);
-  max-width: none;
-  padding: 14px;
-  background: #edf4f0;
-  color: #172b26;
-  font: 16px/1.4 system-ui, sans-serif;
-}
-.ks-panel [hidden] { display: none !important; }
-.ks-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-.ks-panel .ks-header h2 { margin: 0; font-size: 1.25rem; }
-.ks-panel button { background: #dceae3; border: 1px solid #b5c9bf; color: inherit; border-radius: 7px; min-height: 40px; touch-action: manipulation; }
-.ks-panel button:focus-visible, .ks-panel input:focus-visible { outline: 2px solid #357965; outline-offset: 1px; }
-.ks-panel .ks-action { display: block; width: 100%; font-weight: 700; background: #2d6c5e; color: white; border-color: #2d6c5e; }
-.ks-panel .ks-back { padding: 4px 7px; background: none; border-color: transparent; color: #285c4f; }
-.ks-panel h3 { margin: .55em 0 .35em; font-size: 1.02rem; }
-.ks-card { padding: 8px; margin: 7px 0; background: white; border-radius: 8px; }
-.ks-card strong { display: block; margin-bottom: 5px; }
-.ks-choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-#ks-custom button { display: block; width: 100%; text-align: left; margin: 6px 0; overflow-wrap: anywhere; }
-.ks-panel input { font: inherit; width: 100%; border: 1px solid #9fb5a9; border-radius: 6px; padding: 6px 8px; color: inherit; }
-.ks-expression { background: #c8d9be; padding: 8px; border-radius: 7px; font-size: 1.05rem; margin: .35em 0; overflow-wrap: anywhere; }
-.ks-panel input.ks-expression { font-size: 1.15rem; min-height: 42px; }
-.ks-note { margin: .3em 0 .55em; font-size: .81rem; color: #38564d; }
-.ks-result:empty { display: none; }
-.ks-panel .ks-result { background: #d8ebe2; padding: 9px; border-radius: 7px; font-size: 1.1rem; font-weight: 700; }
-.ks-panel .ks-keys { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 5px; margin: 6px 0; }
-.ks-panel .ks-functions, .ks-panel .ks-numbers { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-.ks-keys button { padding: 3px 0; min-width: 0; overflow-wrap: anywhere; font-weight: 650; }
-.ks-numbers button { background: #344652; color: #fff; border-color: #344652; }
-.ks-panel details { margin: 8px 0; }
-.ks-panel summary { cursor: pointer; padding: 6px 4px; }
-.ks-panel #ks-message:empty { display: none; }
-.ks-add-variable, .ks-meta { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: end; }
-.ks-meta { grid-template-columns: 2fr 1fr; }
+.screen-heading { flex: 0 0 auto; min-width: 0; }
+#ks-caption { color: #26382c; font-size: 10px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.key[data-ks-blank] { visibility: hidden; }
+.key[data-key="KS MODE"].active { outline-color: #fff0a7; outline-offset: 1px; }
+.calculator-panel.ks-panel { padding: 14px; }
+.ks-panel input { width: 100%; padding: 6px; font: inherit; }
+.ks-panel summary { padding: .35em 0; cursor: pointer; }
+.ks-panel output:empty { display: none; }
+.ks-panel output { font-size: .875rem; }
+.ks-actions, .ks-meta { display: flex; gap: 6px; flex-wrap: wrap; }
+.ks-actions { justify-content: flex-end; }
+#ks-extra-variables { justify-content: flex-start; }
+#ks-extra-variables:not(:empty) { margin-bottom: .5em; }
+.ks-meta > label { flex: 1 1 8em; min-width: 0; }
