@@ -19,3 +19,15 @@
 #result[data-ks-value] { position: relative; font-variant-numeric: tabular-nums; white-space: nowrap; overflow-x: auto; scrollbar-width: none; padding-right: 4px; }
 #result[data-ks-value]::-webkit-scrollbar { display: none; }
 .screen:has(#result[data-ks-value]) { flex-basis: clamp(106px, 17dvh, 145px); }
+
+.key[hidden], .key-group[hidden] { display: none; }
+#top[data-ks-active] {
+  flex-basis: clamp(66px, 9dvh, 82px);
+  grid-template-areas:
+    "shift alpha . up . mode ks-mode"
+    "shift alpha left . right mode ks-mode"
+    "calc calc . down . . .";
+  row-gap: 2px;
+}
+#top [data-key="KS CALC"] { grid-area: calc; }
+#ks-extra-variables button { min-width: 2.5em; }

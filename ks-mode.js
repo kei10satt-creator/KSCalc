@@ -39,16 +39,21 @@ const ksReserved = new Set(['Ans', 'sin', 'cos', 'tan', 'sqrt', 'nPr', 'nCr']);
 const ksActions = {SHIFT: 'SEL', ALPHA: 'SAV', MODE: '角度', 'KS MODE': 'KS MODE'};
 const ksPassThrough = new Set(['▲', '▼', '◀', '▶', 'CALC', '=', 'DEL', 'AC']);
 // Reuse the calculator's existing grid positions for KS MODE.
-const ksFunctionKeys = {
-  '∫': ['sin', 'sin('], 'x⁻¹': ['cos', 'cos('], 'logₐ': ['tan', 'tan('],
-  'a/b': ['L1', 'L1'], '√': ['L2', 'L2'], 'x²': ['L3', 'L3'],
-  'xʸ': ['w', 'w'], log: ['W', 'W'], ln: ['P', 'P'],
-  '(−)': ['A', 'A'], '°′″': ['X', 'X'], hyp: ['Y', 'Y'],
-  sin: ['E', 'E'], cos: ['I', 'I'], tan: ['変数＋', null],
-  RCL: ['(−)', '−'], ENG: ['√', '√('], '(': ['x²', '^2'],
-  ')': ['xʸ', '^'], 'S⇔D': ['(', '('], 'M+': [')', ')'],
-  '×10ˣ': ['×10ˣ', '×10^'], Ans: ['π', 'π'],
+const ksRows = [
+  ['L1', 'L2', 'L3', 'w', 'W', 'P'],
+  ['A', 'X', 'Y', 'E', 'I', '記号'],
+  ['(−)', '√', 'x²', 'xʸ', '(', ')'],
+  ['sin', 'cos', 'tan', null, null, 'コピー'],
+];
+const ksTokens = {'(−)': '−', '√': '√(', 'x²': '^2', 'xʸ': '^', 'sin': 'sin(',
+  'cos': 'cos(', 'tan': 'tan(', '×10ˣ': '×10^', Ans: 'π'};
+const ksComparisons = {
+  '>': (left, right) => left > right,
+  '<': (left, right) => left < right,
+  '≤': (left, right) => left <= right,
+  '≥': (left, right) => left >= right,
 };
+const ksCommonSymbols = ['Z', 'σ', 'τ', 'δ', 'θ', 'λ'];
 let ksSession = null;
 
 function ksNormalize(expression) {
@@ -58,8 +63,8 @@ function ksNormalize(expression) {
 }
 
 function ksSymbols(expression) {
-  const matches = expression.matchAll(/(?:\d+(?:\.\d*)?|\.\d+)(?:e[+−-]?\d+)?|L[123](?![A-Za-z0-9])|[A-Za-z]+/g);
-  return [...new Set([...matches].filter(match => /^[A-Za-z]/.test(match[0]) &&
+  const matches = expression.matchAll(/(?:\d+(?:\.\d*)?|\.\d+)(?:e[+−-]?\d+)?|L[123](?![A-Za-z0-9])|[A-Za-z]+|[λστδθ]/g);
+  return [...new Set([...matches].filter(match => /^[A-Za-zλστδθ]/.test(match[0]) &&
     !ksReserved.has(match[0]) && !/^\s*\(/.test(expression.slice(match.index + match[0].length)))
     .map(match => match[0]))];
 }
@@ -67,7 +72,16 @@ function ksSymbols(expression) {
 function ksEvaluate(expression, values, syntaxOnly = false) {
   const formula = ksNormalize(expression).trim();
   if (!formula || /\bAns\b/.test(formula)) throw new SyntaxError();
-  return evaluate(completeExpression(formula), values, {savedFormula: true, syntaxOnly});
+  const parts = formula.split(/([<>≤≥])/);
+  const options = {savedFormula: true, syntaxOnly};
+  if (parts.length === 1) return evaluate(completeExpression(formula), values, options);
+  if (parts.length !== 3 || !parts[0].trim() || !parts[2].trim()) throw new SyntaxError();
+  const [lhs, operator, rhs] = parts;
+  const left = evaluate(completeExpression(lhs), values, options);
+  const right = evaluate(completeExpression(rhs), values, options);
+  if (syntaxOnly) return;
+  if (!Number.isFinite(left) || !Number.isFinite(right)) mathError();
+  return ksComparisons[operator](left, right);
 }
 
 function ksReadFormulas() {
@@ -113,7 +127,9 @@ function toggleKSMode() {
 
 function ksKeyLabel(key) {
   if (Object.hasOwn(ksActions, key)) return key === 'MODE' ? angleUnits[angleUnit] : ksActions[key];
-  if (Object.hasOwn(ksFunctionKeys, key)) return ksFunctionKeys[key][0];
+  if (key === 'KS CALC') return 'CALC';
+  if (key === 'Ans') return 'π';
+  if (ksRows.some(row => row.includes(key)) || key === '×10ˣ') return key;
   return ksPassThrough.has(key) || /^[0-9.×÷+−]$/.test(key) ? key : '';
 }
 
@@ -155,9 +171,14 @@ function renderKSMode() {
   }
   $('screen-details').textContent = details;
   $('screen-details').hidden = !details;
+  $('top').dataset.ksActive = '';
+  $('ks-key-pad').hidden = false;
+  $('function-keys').hidden = true;
   for (const {button, key, primary, secondary} of keyLabels) {
+    button.hidden = false;
     const label = ksKeyLabel(key);
     primary.textContent = label;
+    if (key === 'コピー' && state.copiedText && state.copiedText === ksCopyText()) primary.textContent = 'コピー済';
     secondary.textContent = '';
     button.disabled = !label;
     if (!label) button.dataset.ksBlank = '';
@@ -191,7 +212,7 @@ function ksLoadFormula(formula) {
     page: 'edit', note: '', output: '', lastValues: {},
   });
   for (const symbol of ksSymbols(formula.expression)) {
-    if (!Object.hasOwn(ksDefaultVariables, symbol)) ksSession.extraSymbols.add(symbol);
+    if (!Object.hasOwn(ksDefaultVariables, symbol) && !Object.hasOwn(ksComparisons, symbol)) ksSession.extraSymbols.add(symbol);
   }
 }
 
@@ -228,7 +249,8 @@ function ksChoose(key) {
 }
 
 function ksCheckedExpression() {
-  const expression = completeExpression(ksNormalize(ksSession.text).trim());
+  const expression = ksNormalize(ksSession.text).trim().split(/([<>≤≥])/)
+    .map((part, index) => index % 2 ? part : completeExpression(part.trim())).join('');
   const symbols = ksSymbols(expression);
   ksEvaluate(expression, Object.fromEntries(symbols.map(symbol => [symbol, 0])), true);
   return {expression, symbols};
@@ -273,13 +295,10 @@ function ksFinishCalc() {
   state.lastValues = state.values;
   try {
     const result = ksEvaluate(state.calculation, state.values);
-    if (!Number.isFinite(result)) mathError();
-    state.output = (formula?.symbol ? formula.symbol + ' = ' : '') + decimalText(result) +
+    if (typeof result !== 'boolean' && !Number.isFinite(result)) mathError();
+    state.output = typeof result === 'boolean' ? (result ? 'OK' : 'NG') : (formula?.symbol ? formula.symbol + ' = ' : '') + decimalText(result) +
       (formula?.unit ? ' ' + formula.unit : '');
-    state.note = Object.entries(state.values).map(([symbol, value]) => {
-      const unit = ksVariableInfo(formula, symbol).unit;
-      return symbol + ' = ' + value + (unit ? ' ' + unit : '');
-    }).join('　');
+    state.note = ksAssignments(formula, state.values);
   } catch (error) {
     state.note = error.message === 'Math ERROR' ? '計算できない値です。' : '式を確認してください。';
   }
@@ -337,9 +356,14 @@ function ksEditText(key, token, enteringValue = false) {
 
 function pressKSMode(key) {
   const state = ksSession;
-  const label = ksKeyLabel(key);
-  if (!label) return;
-  const token = ksFunctionKeys[key]?.[1] || (/^[0-9.×÷+−]$/.test(key) ? key : '');
+  if (key === 'KS CALC') key = 'CALC';
+  if (!ksKeyLabel(key)) return;
+  if (key === 'コピー') {
+    void ksCopyDisplay();
+    return;
+  }
+  state.copiedText = '';
+  const token = ksTokens[key] || (/^[0-9.×÷+−()]$/.test(key) || Object.hasOwn(ksDefaultVariables, key) ? key : '');
   if (state.page === 'select' || state.page === 'delete') {
     ksChoose(key);
   } else if (key === 'AC') {
@@ -364,7 +388,7 @@ function pressKSMode(key) {
   else if (key === '=') {
     if (ksSymbols(ksNormalize(state.text)).length) state.note = 'CALC で変数に代入';
     else ksStartCalc();
-  } else if (label === '変数＋') ksOpenVariables();
+  } else if (key === '記号') ksOpenVariables();
   else if (token || ['DEL', '◀', '▶'].includes(key)) ksEditText(key, token);
   render();
 }
@@ -448,7 +472,7 @@ function ksSave(event) {
 function ksOpenVariables() {
   $('ks-symbol').value = '';
   $('ks-symbol-message').textContent = '';
-  const symbols = [...ksSession.extraSymbols];
+  const symbols = [...new Set([...ksCommonSymbols, ...Object.keys(ksComparisons), ...ksSession.extraSymbols])];
   $('ks-extra-variables').replaceChildren(...symbols.map(symbol => {
     const button = document.createElement('button');
     button.type = 'button';
@@ -460,10 +484,50 @@ function ksOpenVariables() {
 }
 
 function ksInsertVariable(symbol) {
-  if (!Object.hasOwn(ksDefaultVariables, symbol)) ksSession.extraSymbols.add(symbol);
+  if (!Object.hasOwn(ksDefaultVariables, symbol) && !Object.hasOwn(ksComparisons, symbol)) ksSession.extraSymbols.add(symbol);
   $('ks-variable-panel').close();
   ksEditText('', symbol);
   render();
+}
+
+function ksAssignments(formula, values) {
+  return Object.entries(values).map(([symbol, value]) => {
+    const unit = ksVariableInfo(formula, symbol).unit;
+    return symbol + ' = ' + value + (unit ? ' ' + unit : '');
+  }).join('　');
+}
+
+function ksCopyText() {
+  const state = ksSession;
+  const choosing = state.page === 'select' || state.page === 'delete';
+  const formula = choosing ? state.items[state.selection] : state.source;
+  const expression = choosing ? formula.expression : state.text;
+  if (!expression) return '';
+  return [
+    formula?.name,
+    (formula?.symbol ? formula.symbol + ' = ' : '') + expression,
+    !choosing && state.output ? ksAssignments(formula, state.lastValues) : '',
+    !choosing && state.output,
+  ].filter(Boolean).join('\n');
+}
+
+async function ksCopyDisplay() {
+  const state = ksSession;
+  const text = ksCopyText();
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    if (ksSession === state) {
+      state.copiedText = text;
+      render();
+    }
+  } catch {
+    if (ksSession !== state) return;
+    const input = $('ks-copy-text');
+    input.value = text;
+    $('ks-copy-panel').showModal();
+    input.select();
+  }
 }
 
 function initializeKSMode() {
@@ -473,8 +537,8 @@ function initializeKSMode() {
   $('ks-symbol-form').addEventListener('submit', event => {
     event.preventDefault();
     const symbol = $('ks-symbol').value.trim();
-    if (!/^(?:[A-Za-z]{1,12}|L[123])$/.test(symbol) || ksReserved.has(symbol)) {
-      $('ks-symbol-message').textContent = '変数記号は半角英字か L1・L2・L3 を入力してください。';
+    if (!/^(?:[A-Za-z]{1,12}|L[123]|[λστδθ])$/.test(symbol) || ksReserved.has(symbol)) {
+      $('ks-symbol-message').textContent = '半角英字、L1・L2・L3、または一覧のギリシャ文字を入力してください。';
       return;
     }
     ksInsertVariable(symbol);
