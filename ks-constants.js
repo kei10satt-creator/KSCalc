@@ -17,21 +17,29 @@ const ksConstantPresets = {
     data: {E: Number((33500 * (23 / 24) ** 2 * Math.cbrt(fc / 60)).toPrecision(6))},
     note: ksMaterialSource + ' · 普通コンクリートの参考値。Fc の単位は N/mm²',
   })),
-  timber: [50, 70, 90, 110, 130].map(grade => ({
-    name: '構造用製材 E' + grade + '（等級の平均値基準）',
-    data: {E: grade * 100}, note: 'JAS 1083:2025 表14 ①（曲げヤング係数）',
-  })),
+  timber: [
+    ...[['スギ', 7000], ['ヒノキ', 9000], ['カラマツ', 8000], ['ヒバ', 9000],
+      ['アカマツ', 8000], ['ツガ', 8000], ['エゾマツ', 7000], ['トドマツ', 7000]]
+      .map(([species, E]) => ({
+        name: species, data: {E},
+        note: '普通構造材の基準値 · 林野庁「森林土木木製構造物設計等指針」解説 表4',
+      })),
+    ...[50, 70, 90, 110, 130].map(grade => ({
+      name: '構造用製材 E' + grade + '（等級指定）',
+      data: {E: grade * 100}, note: 'JAS 1083:2025 表14 ①（曲げヤング係数）',
+    })),
+  ],
   'steel-section': [
     ksSteelSection('H-200×100×5.5×8', 2667, [18100000, 181000, 82.3], [1340000, 26700, 22.4]),
     ksSteelSection('H-250×125×6×9', 3697, [39600000, 317000, 104], [2940000, 47000, 28.2]),
     ksSteelSection('H-300×150×6.5×9', 4678, [72100000, 481000, 124], [5080000, 67700, 32.9]),
-    ...[
-      ['200×200×6', 4532, [28000000, 280000, 78.6]],
-      ['200×200×9', 6598, [39200000, 392000, 77.1]],
-      ['250×250×9', 8398, [79800000, 639000, 97.5]],
-      ['300×300×9', 10200, [142000000, 946000, 118]],
-    ].map(([size, A, axis]) => ksSteelSection('BCR295 □-' + size, A, axis, axis, ksTubeSource)),
   ],
+  'column-section': [
+    ['200×200×6', 4532, [28000000, 280000, 78.6]],
+    ['200×200×9', 6598, [39200000, 392000, 77.1]],
+    ['250×250×9', 8398, [79800000, 639000, 97.5]],
+    ['300×300×9', 10200, [142000000, 946000, 118]],
+  ].map(([size, A, axis]) => ksSteelSection('BCR295 □-' + size, A, axis, axis, ksTubeSource)),
   'wood-section': [[90, 90], [105, 105], [120, 120], [105, 150], [105, 180], [105, 240],
     [120, 180], [120, 240], [120, 300]].map(([b, h]) => ({
     name: '木材 ' + b + '×' + h, data: {b, h},
@@ -39,11 +47,17 @@ const ksConstantPresets = {
   custom: [],
 };
 
+const ksConstantItemLabels = {
+  steel: '規格・登録名', rc: '設計基準強度', timber: '樹種・等級',
+  'steel-section': 'サイズ（mm）', 'column-section': 'サイズ（mm）',
+  'wood-section': '登録済み寸法', custom: '登録項目',
+};
+let ksConstantKind = 'steel';
 let ksConstantItems = [];
 let ksConstantDraftId = null;
 
 function ksIsSection(kind) {
-  return kind === 'steel-section' || kind === 'wood-section';
+  return kind === 'steel-section' || kind === 'column-section' || kind === 'wood-section';
 }
 
 function ksReadConstants() {
@@ -58,7 +72,7 @@ function ksConstantValues(kind, item, axis) {
     const [b, h] = axis === 'x' ? [data.b, data.h] : [data.h, data.b];
     return {A: b * h, I: b * h ** 3 / 12, Z: b * h ** 2 / 6, i: h / Math.sqrt(12)};
   }
-  if (kind === 'steel-section') {
+  if (ksIsSection(kind)) {
     return {A: data.A, I: data['I' + axis], Z: data['Z' + axis], i: data['i' + axis]};
   }
   return kind === 'custom' ? {値: data.value} : {E: data.E};
@@ -90,15 +104,60 @@ function ksConstantAssignments(kind, item, axis) {
   return assignments[0]?.[0] === current ? assignments : [];
 }
 
-function ksShowConstant() {
-  const kind = $('ks-constant-kind').value;
+function ksSavedConstantKind(item) {
+  // v0.2.8 stored all steel sections under one kind.
+  if (item.kind === 'steel-section' && /コラム|角形鋼管|BCR|BCP|STKR|□/i.test(item.name)) {
+    return 'column-section';
+  }
+  return item.kind;
+}
+
+function ksCurrentConstant() {
   const item = ksConstantItems[$('ks-constant-item').value];
+  if (item || ksConstantKind !== 'wood-section') return item;
+  const b = Number($('ks-constant-width').value);
+  const h = Number($('ks-constant-depth').value);
+  const rectangle = {name: '矩形 ' + b + '×' + h, data: {b, h}};
+  if (b > 0 && h > 0 && ['x', 'y'].every(axis =>
+    Object.values(ksConstantValues('wood-section', rectangle, axis)).every(value => Number.isFinite(value) && value > 0))) {
+    return rectangle;
+  }
+}
+
+function ksConstantOption(value, name) {
+  const option = document.createElement('option');
+  option.value = value;
+  option.textContent = name;
+  return option;
+}
+
+function ksSelectConstantItem() {
+  if (ksConstantKind === 'wood-section') {
+    const dimensions = ksConstantItems[$('ks-constant-item').value]?.data;
+    $('ks-constant-width').value = dimensions?.b ?? '';
+    $('ks-constant-depth').value = dimensions?.h ?? '';
+  }
+  ksShowConstant();
+}
+
+function ksChooseConstantKind(kind) {
+  ksConstantKind = kind;
+  $('ks-constant-material').value = !ksIsSection(kind) && kind !== 'custom' ? kind : '';
+  $('ks-constant-shape').value = ksIsSection(kind) ? kind : '';
+  $('ks-constant-custom').setAttribute('aria-pressed', String(kind === 'custom'));
+  ksListConstants();
+}
+
+function ksShowConstant() {
+  const kind = ksConstantKind;
+  const item = ksCurrentConstant();
   const axis = $('ks-constant-axis').value;
   const state = ksSession;
   const entering = state.page === 'values';
   const assignments = ksConstantAssignments(kind, item, axis);
   $('ks-constant-axis-label').hidden = !ksIsSection(kind);
-  $('ks-constant-edit').hidden = !item || entering;
+  $('ks-constant-edit').hidden = !item || entering ||
+    (kind === 'wood-section' && !$('ks-constant-item').value);
   $('ks-constant-add').hidden = entering;
   const apply = $('ks-constant-apply');
   apply.hidden = !entering;
@@ -106,7 +165,8 @@ function ksShowConstant() {
   apply.textContent = assignments.length ? assignments.map(([symbol]) => symbol).join('・') + ' に代入' : '代入';
   const output = $('ks-constant-preview');
   if (!item) {
-    output.textContent = '登録済みの項目がありません。';
+    output.textContent = kind === 'wood-section'
+      ? '幅とせいに正の数値を入力してください。' : '登録済みの項目がありません。';
     return;
   }
   const values = Object.entries(ksConstantValues(kind, item, axis)).map(([symbol, value]) =>
@@ -116,24 +176,26 @@ function ksShowConstant() {
 }
 
 function ksListConstants(selectedId) {
-  const kind = $('ks-constant-kind').value;
+  const kind = ksConstantKind;
+  const rectangular = kind === 'wood-section';
   const select = $('ks-constant-item');
   let readFailed = false;
   try {
-    ksConstantItems = [...ksConstantPresets[kind], ...ksReadConstants().filter(item => item.kind === kind)];
+    ksConstantItems = [...ksConstantPresets[kind], ...ksReadConstants().filter(item => ksSavedConstantKind(item) === kind)];
   } catch {
     readFailed = true;
     ksConstantItems = ksConstantPresets[kind];
   }
-  select.replaceChildren(...ksConstantItems.map((item, index) => {
-    const option = document.createElement('option');
-    option.value = String(index);
-    option.textContent = item.name;
-    return option;
-  }));
-  select.value = String(Math.max(0, ksConstantItems.findIndex(item => item.id && item.id === selectedId)));
+  const options = ksConstantItems.map((item, index) => ksConstantOption(String(index), item.name));
+  if (rectangular) options.unshift(ksConstantOption('', '直接入力'));
+  select.replaceChildren(...options);
+  const index = ksConstantItems.findIndex(item => item.id && item.id === selectedId);
+  select.value = rectangular && index < 0 ? '' : String(Math.max(0, index));
   select.disabled = !ksConstantItems.length;
-  ksShowConstant();
+  $('ks-constant-item-label').textContent = ksConstantItemLabels[kind];
+  $('ks-constant-size').hidden = !rectangular;
+  $('ks-constant-dimensions').hidden = !rectangular;
+  ksSelectConstantItem();
   if (readFailed) $('ks-constant-preview').textContent += '\n登録した定数を読み込めません。';
 }
 
@@ -145,16 +207,15 @@ function ksOpenConstants() {
   $('ks-constant-context').textContent = entering ? ksDisplayExpression(source, text) + '　｜　入力中 ' + symbol : '';
   $('ks-constant-picker').hidden = false;
   $('ks-constant-form').hidden = true;
-  $('ks-constant-kind').value = !entering || symbol === 'E' ? 'steel'
-    : Object.hasOwn(ksSectionFields, symbol) ? 'steel-section' : 'custom';
   $('ks-constant-axis').value = 'x';
-  ksListConstants();
+  ksChooseConstantKind(!entering || symbol === 'E' ? 'steel'
+    : Object.hasOwn(ksSectionFields, symbol) ? 'steel-section' : 'custom');
   $('ks-constant-panel').showModal();
 }
 
 function ksApplyConstant() {
-  const kind = $('ks-constant-kind').value;
-  const item = ksConstantItems[$('ks-constant-item').value];
+  const kind = ksConstantKind;
+  const item = ksCurrentConstant();
   const axis = $('ks-constant-axis').value;
   const assignments = ksConstantAssignments(kind, item, axis);
   if (!assignments.length) return;
@@ -170,17 +231,17 @@ function ksApplyConstant() {
 function ksConstantFields(kind) {
   if (kind === 'custom') return [['value', '値'], ['unit', '単位']];
   if (kind === 'wood-section') return [['b', '幅 b（mm）'], ['h', 'せい h（mm）']];
-  if (kind !== 'steel-section') return [['E', 'ヤング係数 E（N/mm²）']];
+  if (!ksIsSection(kind)) return [['E', 'ヤング係数 E（N/mm²）']];
   return [['A', 'A（mm²）'], ...['x', 'y'].flatMap(axis =>
     ['I', 'Z', 'i'].map(symbol => [symbol + axis, symbol + axis + '（' + ksSectionFields[symbol] + '）']))];
 }
 
-function ksEditConstant(item) {
-  const kind = $('ks-constant-kind').value;
-  ksConstantDraftId = item?.id || null;
+function ksEditConstant(item, adding = false) {
+  const kind = ksConstantKind;
+  ksConstantDraftId = adding ? null : item?.id || null;
   $('ks-constant-name').value = item?.name || '';
   $('ks-constant-note').value = item?.note || '';
-  $('ks-constant-save').textContent = item && !item.id ? '複製して保存' : '保存';
+  $('ks-constant-save').textContent = item && !item.id && !adding ? '複製して保存' : '保存';
   $('ks-constant-error').textContent = '';
   $('ks-constant-fields').replaceChildren(...ksConstantFields(kind).map(([key, title]) => {
     const label = document.createElement('label');
@@ -202,7 +263,7 @@ function ksEditConstant(item) {
 
 function ksSaveConstant(event) {
   event.preventDefault();
-  const kind = $('ks-constant-kind').value;
+  const kind = ksConstantKind;
   const name = $('ks-constant-name').value.trim();
   const note = $('ks-constant-note').value.trim();
   const data = {};
@@ -235,12 +296,21 @@ function ksSaveConstant(event) {
 }
 
 function initializeKSConstants() {
-  $('ks-constant-kind').addEventListener('change', () => ksListConstants());
-  $('ks-constant-item').addEventListener('change', ksShowConstant);
+  for (const id of ['ks-constant-material', 'ks-constant-shape']) {
+    $(id).addEventListener('change', () => ksChooseConstantKind($(id).value || 'custom'));
+  }
+  $('ks-constant-custom').addEventListener('click', () => ksChooseConstantKind('custom'));
+  $('ks-constant-item').addEventListener('change', ksSelectConstantItem);
+  for (const id of ['ks-constant-width', 'ks-constant-depth']) {
+    $(id).addEventListener('input', () => {
+      $('ks-constant-item').value = '';
+      ksShowConstant();
+    });
+  }
   $('ks-constant-axis').addEventListener('change', ksShowConstant);
   $('ks-constant-close').addEventListener('click', () => $('ks-constant-panel').close());
-  $('ks-constant-add').addEventListener('click', () => ksEditConstant());
-  $('ks-constant-edit').addEventListener('click', () => ksEditConstant(ksConstantItems[$('ks-constant-item').value]));
+  $('ks-constant-add').addEventListener('click', () => ksEditConstant(ksConstantKind === 'wood-section' ? ksCurrentConstant() : undefined, true));
+  $('ks-constant-edit').addEventListener('click', () => ksEditConstant(ksCurrentConstant()));
   $('ks-constant-apply').addEventListener('click', ksApplyConstant);
   $('ks-constant-form').addEventListener('submit', ksSaveConstant);
   $('ks-constant-cancel').addEventListener('click', () => {

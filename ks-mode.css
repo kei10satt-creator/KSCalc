@@ -35,3 +35,10 @@
 #ks-constant-panel [hidden] { display: none; }
 #ks-constant-context { overflow-wrap: anywhere; margin: 0 0 .65em; font-size: .875rem; }
 #ks-constant-preview { overflow-wrap: anywhere; }
+.ks-constant-row { display: grid; grid-template-columns: 6.15em minmax(0, 1fr); align-items: center; gap: 8px; margin: 0 0 .4em; }
+.ks-constant-row > label { margin: 0; }
+.ks-constant-row small { display: block; }
+.ks-constant-row select, #ks-constant-dimensions input { box-sizing: border-box; min-width: 0; }
+#ks-constant-dimensions { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: end; gap: 5px; }
+#ks-constant-dimensions label { margin: 0; font-size: .85em; }
+#ks-constant-dimensions > span { padding-bottom: .45em; }
