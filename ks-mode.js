@@ -47,7 +47,11 @@ const ksRows = [
 ];
 const ksTokens = {'(−)': '−', '√': '√(', 'x²': '^2', 'xʸ': '^', 'sin': 'sin(',
   'cos': 'cos(', 'tan': 'tan(', '×10ˣ': '×10^', Ans: 'π'};
+const ksComparisonPattern = /([=<>≤≥])/;
 const ksComparisons = {
+  // Ignore floating-point rounding at the scale of the two operands.
+  '=': (left, right) => Math.abs(left - right) <=
+    2 * Number.EPSILON * Math.max(Math.abs(left), Math.abs(right)),
   '>': (left, right) => left > right,
   '<': (left, right) => left < right,
   '≤': (left, right) => left <= right,
@@ -72,7 +76,7 @@ function ksSymbols(expression) {
 function ksEvaluate(expression, values, syntaxOnly = false) {
   const formula = ksNormalize(expression).trim();
   if (!formula || /\bAns\b/.test(formula)) throw new SyntaxError();
-  const parts = formula.split(/([<>≤≥])/);
+  const parts = formula.split(ksComparisonPattern);
   const options = {savedFormula: true, syntaxOnly};
   if (parts.length === 1) return evaluate(completeExpression(formula), values, options);
   if (parts.length !== 3 || !parts[0].trim() || !parts[2].trim()) throw new SyntaxError();
@@ -248,7 +252,7 @@ function ksChoose(key) {
 }
 
 function ksCheckedExpression() {
-  const expression = ksNormalize(ksSession.text).trim().split(/([<>≤≥])/)
+  const expression = ksNormalize(ksSession.text).trim().split(ksComparisonPattern)
     .map((part, index) => index % 2 ? part : completeExpression(part.trim())).join('');
   const symbols = ksSymbols(expression);
   ksEvaluate(expression, Object.fromEntries(symbols.map(symbol => [symbol, 0])), true);
