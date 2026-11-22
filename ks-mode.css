@@ -30,3 +30,8 @@
   row-gap: 2px;
 }
 #ks-extra-variables button { min-width: 2.5em; }
+
+#ks-constant-panel select { display: block; width: 100%; padding: 6px; font: inherit; }
+#ks-constant-panel [hidden] { display: none; }
+#ks-constant-context { overflow-wrap: anywhere; margin: 0 0 .65em; font-size: .875rem; }
+#ks-constant-preview { overflow-wrap: anywhere; }

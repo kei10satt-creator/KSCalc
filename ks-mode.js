@@ -21,6 +21,8 @@ const ksDefaultVariables = {
   Y: {},
   E: ksBeamVariables.E,
   I: ksBeamVariables.I,
+  Z: {label: '断面係数', unit: 'mm³'},
+  i: {label: '断面二次半径', unit: 'mm'},
 };
 
 function ksVariableInfo(formula, symbol) {
@@ -43,7 +45,7 @@ const ksRows = [
   ['L1', 'L2', 'L3', 'w', 'W', 'P'],
   ['A', 'X', 'Y', 'E', 'I', '記号'],
   ['(−)', '√', 'x²', 'xʸ', '(', ')'],
-  ['sin', 'cos', 'tan', null, 'CALC', 'コピー'],
+  ['sin', 'cos', 'tan', '定数', 'CALC', 'コピー'],
 ];
 const ksTokens = {'(−)': '−', '√': '√(', 'x²': '^2', 'xʸ': '^', 'sin': 'sin(',
   'cos': 'cos(', 'tan': 'tan(', '×10ˣ': '×10^', Ans: 'π'};
@@ -57,7 +59,7 @@ const ksComparisons = {
   '≤': (left, right) => left <= right,
   '≥': (left, right) => left >= right,
 };
-const ksCommonSymbols = ['Z', 'σ', 'τ', 'δ', 'θ', 'λ'];
+const ksCommonSymbols = ['Z', 'i', 'σ', 'τ', 'δ', 'θ', 'λ'];
 let ksSession = null;
 
 function ksNormalize(expression) {
@@ -161,7 +163,7 @@ function renderKSMode() {
     const info = ksVariableInfo(formula, symbol);
     details = [symbol, info.label, info.unit ? '[' + info.unit + ']' : ''].filter(Boolean).join(' ') +
       '　' + (state.fieldIndex + 1) + '/' + state.fields.length;
-    hint.textContent = state.note || '＝ 確定';
+    hint.textContent = state.note || '＝ 確定　定数 呼出';
     // Keep the formula's horizontal scroll position while entering values.
     if (!Object.hasOwn(result.dataset, 'ksValue') || $('expr').textContent !== text) renderExpression(text);
     result.dataset.ksValue = '';
@@ -279,6 +281,7 @@ function ksStartCalc() {
       state.fields.sort((a, b) => order.indexOf(a) - order.indexOf(b));
     }
     state.values = {};
+    state.valueSources = {};
     if (state.fields.length) {
       state.page = 'values';
       ksShowField(0);
@@ -303,6 +306,7 @@ function ksFinishCalc() {
   const formula = state.source;
   state.page = 'edit';
   state.lastValues = state.values;
+  state.lastValueSources = state.valueSources;
   try {
     const result = ksEvaluate(state.calculation, state.values);
     if (typeof result !== 'boolean' && !Number.isFinite(result)) mathError();
@@ -310,7 +314,7 @@ function ksFinishCalc() {
     const unit = ksResultUnit(formula, state.target);
     state.output = typeof result === 'boolean' ? (result ? 'OK' : 'NG')
       : (symbol ? symbol + ' = ' : '') + decimalText(result) + (unit ? ' ' + unit : '');
-    state.note = ksAssignments(formula, state.values);
+    state.note = ksAssignments(formula, state.values, state.valueSources);
   } catch (error) {
     state.note = error.message === 'Math ERROR' ? '計算できない値です。' : '式を確認してください。';
   }
@@ -322,20 +326,40 @@ function ksAcceptValue() {
   try {
     const value = ksEvaluate(state.valueText, {});
     if (!Number.isFinite(value)) mathError();
-    if (state.source?.builtin && state.text === state.source.expression) {
-      const positive = ['L', 'E', 'I'].includes(symbol);
-      if (positive ? value <= 0 : value < 0) {
-        state.note = positive ? '正の値を入力してください。' : '0 以上の値を入力してください。';
-        return;
-      }
+    if (!ksValidInput(symbol, value)) {
+      state.note = ['L', 'E', 'I'].includes(symbol)
+        ? '正の値を入力してください。' : '0 以上の値を入力してください。';
+      return;
     }
-    Object.defineProperty(state.values, symbol, {value, enumerable: true, configurable: true});
-    state.note = '';
-    if (state.fieldIndex + 1 < state.fields.length) ksShowField(state.fieldIndex + 1);
-    else ksFinishCalc();
+    const source = state.replaceValue && Object.hasOwn(state.lastValues, symbol)
+      ? state.lastValueSources?.[symbol] : '';
+    ksSetValue(symbol, value, source);
+    ksNextField();
   } catch {
     state.note = '数値を確認してください。';
   }
+}
+
+function ksValidInput(symbol, value) {
+  const {source, text} = ksSession;
+  if (!Number.isFinite(value)) return false;
+  if (source?.builtin && text === source.expression) {
+    return ['L', 'E', 'I'].includes(symbol) ? value > 0 : value >= 0;
+  }
+  return true;
+}
+
+function ksSetValue(symbol, value, source) {
+  Object.defineProperty(ksSession.values, symbol, {value, enumerable: true, configurable: true});
+  if (source) Object.defineProperty(ksSession.valueSources, symbol, {value: source, enumerable: true});
+}
+
+function ksNextField() {
+  const state = ksSession;
+  state.note = '';
+  const next = state.fields.findIndex((symbol, index) => index > state.fieldIndex && !Object.hasOwn(state.values, symbol));
+  if (next === -1) ksFinishCalc();
+  else ksShowField(next);
 }
 
 function ksEditText(key, token, enteringValue = false) {
@@ -377,6 +401,8 @@ function pressKSMode(key) {
   const token = ksTokens[key] || (/^[0-9.×÷+−()]$/.test(key) || Object.hasOwn(ksDefaultVariables, key) ? key : '');
   if (state.page === 'select' || state.page === 'delete') {
     ksChoose(key);
+  } else if (key === '定数') {
+    ksOpenConstants();
   } else if (key === 'AC') {
     Object.assign(state, {
       page: 'edit', source: null, text: '', cursor: 0, output: '', note: '',
@@ -501,10 +527,11 @@ function ksInsertVariable(symbol) {
   render();
 }
 
-function ksAssignments(formula, values) {
+function ksAssignments(formula, values, sources = {}) {
   return Object.entries(values).map(([symbol, value]) => {
     const unit = ksVariableInfo(formula, symbol).unit;
-    return symbol + ' = ' + value + (unit ? ' ' + unit : '');
+    const source = Object.hasOwn(sources, symbol) ? sources[symbol] : '';
+    return symbol + ' = ' + value + (unit ? ' ' + unit : '') + (source ? '（' + source + '）' : '');
   }).join('　');
 }
 
@@ -526,7 +553,7 @@ function ksCopyText() {
   return [
     formula?.name,
     ksDisplayExpression(formula, expression),
-    !choosing && state.output ? ksAssignments(formula, state.lastValues) : '',
+    !choosing && state.output ? ksAssignments(formula, state.lastValues, state.lastValueSources) : '',
     !choosing && state.output,
   ].filter(Boolean).join('\n');
 }
@@ -551,6 +578,7 @@ async function ksCopyDisplay() {
 }
 
 function initializeKSMode() {
+  initializeKSConstants();
   $('ks-save-form').addEventListener('submit', ksSave);
   $('ks-cancel-save').addEventListener('click', () => $('ks-save-panel').close());
   $('ks-cancel-symbol').addEventListener('click', () => $('ks-variable-panel').close());
