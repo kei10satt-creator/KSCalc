@@ -146,7 +146,7 @@ function renderKSMode() {
     (fixDigits === null ? ' · Norm' : ' · FIX ' + fixDigits) + ' · KS MODE';
   $('ks-caption').textContent = caption;
   $('ks-caption').hidden = !caption;
-  const text = (formula?.symbol ? formula.symbol + ' = ' : '') + (choosing ? formula.expression : state.text);
+  const text = ksDisplayExpression(formula, choosing ? formula.expression : state.text);
   const caret = state.page === 'edit' ? text.length - state.text.length + state.cursor : null;
   let details = state.note || (unchanged ? formula.note : '') || '';
   const enteringValue = state.page === 'values';
@@ -252,11 +252,17 @@ function ksChoose(key) {
 }
 
 function ksCheckedExpression() {
-  const expression = ksNormalize(ksSession.text).trim().split(ksComparisonPattern)
-    .map((part, index) => index % 2 ? part : completeExpression(part.trim())).join('');
-  const symbols = ksSymbols(expression);
-  ksEvaluate(expression, Object.fromEntries(symbols.map(symbol => [symbol, 0])), true);
-  return {expression, symbols};
+  const parts = ksNormalize(ksSession.text).trim().split(ksComparisonPattern)
+    .map((part, index) => index % 2 ? part : completeExpression(part.trim()));
+  const expression = parts.join('');
+  const [left, operator, right] = parts;
+  const rightSymbols = operator === '=' && parts.length === 3 ? ksSymbols(right) : [];
+  const target = right && operator === '=' && parts.length === 3 &&
+    ksSymbols(left).includes(left) && !rightSymbols.includes(left) ? left : '';
+  const calculation = target ? right : expression;
+  const symbols = target ? rightSymbols : ksSymbols(expression);
+  ksEvaluate(calculation, Object.fromEntries(symbols.map(symbol => [symbol, 0])), true);
+  return {expression, calculation, symbols, target};
 }
 
 function ksStartCalc() {
@@ -264,8 +270,9 @@ function ksStartCalc() {
   state.note = '';
   state.output = '';
   try {
-    const {expression, symbols} = ksCheckedExpression();
-    state.calculation = expression;
+    const {calculation, symbols, target} = ksCheckedExpression();
+    state.calculation = calculation;
+    state.target = target;
     state.fields = symbols;
     if (state.source?.builtin && state.text === state.source.expression) {
       const order = Object.keys(ksBeamVariables);
@@ -299,8 +306,10 @@ function ksFinishCalc() {
   try {
     const result = ksEvaluate(state.calculation, state.values);
     if (typeof result !== 'boolean' && !Number.isFinite(result)) mathError();
-    state.output = typeof result === 'boolean' ? (result ? 'OK' : 'NG') : (formula?.symbol ? formula.symbol + ' = ' : '') + decimalText(result) +
-      (formula?.unit ? ' ' + formula.unit : '');
+    const symbol = state.target || formula?.symbol;
+    const unit = ksResultUnit(formula, state.target);
+    state.output = typeof result === 'boolean' ? (result ? 'OK' : 'NG')
+      : (symbol ? symbol + ' = ' : '') + decimalText(result) + (unit ? ' ' + unit : '');
     state.note = ksAssignments(formula, state.values);
   } catch (error) {
     state.note = error.message === 'Math ERROR' ? '計算できない値です。' : '式を確認してください。';
@@ -371,7 +380,7 @@ function pressKSMode(key) {
   } else if (key === 'AC') {
     Object.assign(state, {
       page: 'edit', source: null, text: '', cursor: 0, output: '', note: '',
-      calculation: '', lastValues: {}, values: {}, fields: [], fieldIndex: 0,
+      calculation: '', target: '', lastValues: {}, values: {}, fields: [], fieldIndex: 0,
       valueText: '', valueCursor: 0,
     });
   } else if (state.page === 'values') {
@@ -397,16 +406,16 @@ function pressKSMode(key) {
 
 function ksOpenSave() {
   const state = ksSession;
-  let symbols;
+  let symbols, target;
   try {
-    ({symbols} = ksCheckedExpression());
+    ({symbols, target} = ksCheckedExpression());
   } catch {
     state.note = '保存する式を確認してください。';
     return;
   }
   const source = state.source;
   $('ks-name').value = source?.name ? source.name + (source.builtin ? '（コピー）' : '') : '';
-  $('ks-unit').value = source?.unit || '';
+  $('ks-unit').value = ksResultUnit(source, target);
   $('ks-details').open = false;
   $('ks-save-message').textContent = '';
   $('ks-save-as').hidden = !source?.id;
@@ -458,7 +467,7 @@ function ksSave(event) {
       variables: Object.fromEntries(state.metadataFields.map(({symbol, label, unit}) =>
         [symbol, {label: label.value.trim(), unit: unit.value.trim()}])),
     };
-    if (state.source?.symbol) formula.symbol = state.source.symbol;
+    if (state.source?.symbol && !ksComparisonPattern.test(expression)) formula.symbol = state.source.symbol;
     if (index < 0) items.push(formula);
     else items[index] = formula;
     localStorage.setItem(ksStorageKey, JSON.stringify(items));
@@ -499,6 +508,15 @@ function ksAssignments(formula, values) {
   }).join('　');
 }
 
+function ksDisplayExpression(formula, expression) {
+  return formula?.symbol && !ksComparisonPattern.test(expression)
+    ? formula.symbol + ' = ' + expression : expression;
+}
+
+function ksResultUnit(formula, target) {
+  return target && formula?.symbol && formula.symbol !== target ? '' : formula?.unit || '';
+}
+
 function ksCopyText() {
   const state = ksSession;
   const choosing = state.page === 'select' || state.page === 'delete';
@@ -507,7 +525,7 @@ function ksCopyText() {
   if (!expression) return '';
   return [
     formula?.name,
-    (formula?.symbol ? formula.symbol + ' = ' : '') + expression,
+    ksDisplayExpression(formula, expression),
     !choosing && state.output ? ksAssignments(formula, state.lastValues) : '',
     !choosing && state.output,
   ].filter(Boolean).join('\n');
