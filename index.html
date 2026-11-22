@@ -1,4 +1,4 @@
-<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><meta name="theme-color" content="#252b30"><link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="icon.png"><title>KS関数電卓</title><link rel="stylesheet" href="./ks-mode.css?v=029"><style>
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><meta name="theme-color" content="#252b30"><link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="icon.png"><title>KS関数電卓</title><link rel="stylesheet" href="./ks-mode.css?v=0210"><style>
 *{box-sizing:border-box}body{margin:0;background:#171a1d;color:#fff;font-family:Arial,sans-serif;display:flex;justify-content:center}.calc{width:min(100%,440px);min-height:100dvh;background:linear-gradient(110deg,#343b40,#24292d);padding:16px 12px 22px;display:flex;flex-direction:column;gap:9px}.brand{font-weight:bold;font-size:20px;letter-spacing:1px}.sub{font-size:11px;color:#ccd4d6}.screen{background:#bdcbb4;color:#18251e;border:7px solid #161b1d;border-radius:9px;min-height:145px;padding:12px;display:flex;flex-direction:column;justify-content:space-between;box-shadow:inset 0 0 12px #7f9182}.expression{font-size:21px;overflow-wrap:anywhere;min-height:56px}.result{text-align:right;font-size:28px;overflow-wrap:anywhere}.status{font-size:12px;min-height:15px;color:#dbe4bd}.key{border:1px solid #12181b;border-radius:9px;background:linear-gradient(#59646c,#323b42);color:#f4f7f8;min-height:45px;display:flex;flex-direction:column;justify-content:center;align-items:center;touch-action:manipulation;user-select:none;box-shadow:0 3px 1px #121719;padding:2px;font-size:clamp(14px,4vw,20px)}.key:active{transform:translateY(2px);box-shadow:0 1px 1px #121719}.key .secondary{font-size:9px;min-height:13px;color:#e3dc91;white-space:nowrap}.key.number{background:linear-gradient(#7e8992,#515d66);font-size:27px}.key.green{background:linear-gradient(#b3d977,#74a34a)}.key.del{background:linear-gradient(#9bc86b,#648f38)}.key.active{outline:2px solid #e4dc8c}.footer{font-size:10px;color:#b4c2c9;text-align:center;margin-top:3px}.history{display:none;max-height:130px;overflow:auto;background:#151c1d;padding:8px;font-size:13px}.history.show{display:block}.history div{padding:5px;border-bottom:1px solid #3a4144}
 
 /* v0.1.1: fit the calculator into the available iPhone viewport */
@@ -69,7 +69,7 @@ html,body{height:100%;overflow:hidden}body{height:100dvh}.calc{height:100dvh;min
 .entry-form :is(input, select) { font: inherit; min-width: 0; padding: .36em; }
 .entry-form > div:last-child, .entry-form + form { margin-top: .55em; }
 @media(max-height:650px){.sub,.footer{display:none}.screen{flex-basis:14dvh}.calc{gap:2px}}
-</style></head><body><main class="calc"><div><div class="brand">CASIO <span style="float:right;font-size:12px">KS EDITION</span></div><div class="sub">fx-375ESA · NATURAL-V.P.A.M. inspired</div></div><div class="screen"><div class="screen-heading"><div class="status" id="status">角度 · COMP ·Norm</div><div id="ks-caption" aria-live="polite" hidden></div></div><div class="expression" id="expr"></div><div id="screen-details" class="screen-details" aria-live="polite" hidden></div><div class="screen-output"><div id="ks-entry-hint" aria-live="polite" hidden></div><div class="result" id="result">0</div></div></div><div class="history" id="history"></div><div class="top" id="top"></div><div class="keys"><div class="key-group function-keys" id="function-keys" role="group" aria-label="関数キー"></div><div class="key-group function-keys" id="ks-key-pad" role="group" aria-label="KS MODEの関数キー" hidden></div><div class="key-group number-pad" id="number-pad" role="group" aria-label="テンキー"></div></div><div class="footer">v0.2.9 · 1画面表示 · オフライン対応 · 計算結果は近似値の場合があります</div></main>
+</style></head><body><main class="calc"><div><div class="brand">CASIO <span style="float:right;font-size:12px">KS EDITION</span></div><div class="sub">fx-375ESA · NATURAL-V.P.A.M. inspired</div></div><div class="screen"><div class="screen-heading"><div class="status" id="status">角度 · COMP ·Norm</div><div id="ks-caption" aria-live="polite" hidden></div></div><div class="expression" id="expr"></div><div id="screen-details" class="screen-details" aria-live="polite" hidden></div><div class="screen-output"><div id="ks-entry-hint" aria-live="polite" hidden></div><div class="result" id="result">0</div></div></div><div class="history" id="history"></div><div class="top" id="top"></div><div class="keys"><div class="key-group function-keys" id="function-keys" role="group" aria-label="関数キー"></div><div class="key-group function-keys" id="ks-key-pad" role="group" aria-label="KS MODEの関数キー" hidden></div><div class="key-group number-pad" id="number-pad" role="group" aria-label="テンキー"></div></div><div class="footer">v0.2.10 · 1画面表示 · オフライン対応 · 計算結果は近似値の場合があります</div></main>
 <dialog id="statistics-panel" class="calculator-panel" aria-labelledby="statistics-title">
   <h2 id="statistics-title">STAT · 1変数統計</h2>
   <form id="statistics-form">
@@ -160,7 +160,7 @@ html,body{height:100%;overflow:hidden}body{height:100dvh}.calc{height:100dvh;min
   <h2 id="ks-constant-title">定数・断面</h2>
   <p id="ks-constant-context" hidden></p>
   <div id="ks-constant-picker">
-    <div class="ks-constant-row">
+    <div id="ks-constant-material-row" class="ks-constant-row">
       <label for="ks-constant-material">材料 <small>（ヤング係数）</small></label>
       <select id="ks-constant-material">
         <option value="" disabled>材料を選択</option>
@@ -169,7 +169,7 @@ html,body{height:100%;overflow:hidden}body{height:100dvh}.calc{height:100dvh;min
         <option value="timber">木材</option>
       </select>
     </div>
-    <div class="ks-constant-row">
+    <div id="ks-constant-shape-row" class="ks-constant-row">
       <label for="ks-constant-shape">断面形状</label>
       <select id="ks-constant-shape">
         <option value="" disabled>形状を選択</option>
@@ -214,7 +214,7 @@ html,body{height:100%;overflow:hidden}body{height:100dvh}.calc{height:100dvh;min
     </div>
   </form>
 </dialog>
-<script src="./arithmetic.js?v=029"></script><script src="./ks-mode.js?v=029"></script><script src="./ks-constants.js?v=029"></script><script>
+<script src="./arithmetic.js?v=0210"></script><script src="./ks-mode.js?v=0210"></script><script src="./ks-constants.js?v=0210"></script><script>
 const functionRows = [
   [['CALC', 'SOLVE'], ['∫', 'd/dx'], null, null, ['x⁻¹', 'x!'], ['logₐ', 'Σ']],
   [['a/b', 'a b/c'], ['√', '³√'], ['x²', 'x³'], ['xʸ', 'ʸ√x'], ['log', '10ˣ'], ['ln', 'eˣ']],
