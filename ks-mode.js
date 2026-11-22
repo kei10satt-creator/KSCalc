@@ -43,7 +43,7 @@ const ksRows = [
   ['L1', 'L2', 'L3', 'w', 'W', 'P'],
   ['A', 'X', 'Y', 'E', 'I', '記号'],
   ['(−)', '√', 'x²', 'xʸ', '(', ')'],
-  ['sin', 'cos', 'tan', null, null, 'コピー'],
+  ['sin', 'cos', 'tan', null, 'CALC', 'コピー'],
 ];
 const ksTokens = {'(−)': '−', '√': '√(', 'x²': '^2', 'xʸ': '^', 'sin': 'sin(',
   'cos': 'cos(', 'tan': 'tan(', '×10ˣ': '×10^', Ans: 'π'};
@@ -127,7 +127,6 @@ function toggleKSMode() {
 
 function ksKeyLabel(key) {
   if (Object.hasOwn(ksActions, key)) return key === 'MODE' ? angleUnits[angleUnit] : ksActions[key];
-  if (key === 'KS CALC') return 'CALC';
   if (key === 'Ans') return 'π';
   if (ksRows.some(row => row.includes(key)) || key === '×10ˣ') return key;
   return ksPassThrough.has(key) || /^[0-9.×÷+−]$/.test(key) ? key : '';
@@ -356,7 +355,6 @@ function ksEditText(key, token, enteringValue = false) {
 
 function pressKSMode(key) {
   const state = ksSession;
-  if (key === 'KS CALC') key = 'CALC';
   if (!ksKeyLabel(key)) return;
   if (key === 'コピー') {
     void ksCopyDisplay();

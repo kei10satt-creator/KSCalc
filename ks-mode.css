@@ -26,8 +26,7 @@
   grid-template-areas:
     "shift alpha . up . mode ks-mode"
     "shift alpha left . right mode ks-mode"
-    "calc calc . down . . .";
+    ". . . down . . .";
   row-gap: 2px;
 }
-#top [data-key="KS CALC"] { grid-area: calc; }
 #ks-extra-variables button { min-width: 2.5em; }
